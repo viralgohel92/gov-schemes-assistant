@@ -16,7 +16,8 @@ for _, row in df.iterrows():
         benefits=row["benefits"],
         eligibility=row["eligibility"],
         documents_required=row["documents_required"],
-        application_process = row["application_process"]
+        application_process = row["application_process"],
+        state = row["state"]
     )
 
     db.add(scheme)

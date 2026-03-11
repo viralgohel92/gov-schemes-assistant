@@ -17,4 +17,5 @@ class Scheme(Base):
     eligibility = Column(Text)
     documents_required = Column(Text)
     application_process = Column(Text)
+    state = Column(String)
     

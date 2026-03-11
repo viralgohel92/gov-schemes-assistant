@@ -7,6 +7,7 @@
  - After all pages attempted, retries any still-missing pages
  - Longer wait between retries with exponential backoff
  - Saves progress to CSV even if some pages still fail
+ - Now includes "state" column in output CSV
 
 RUN:
     python3 scrape_gujarat_schemes.py
@@ -42,7 +43,7 @@ BASE_URL    = "https://www.myscheme.gov.in/search/state/Gujarat"
 SCHEME_BASE = "https://www.myscheme.gov.in/schemes/"
 
 # Output CSV filename
-OUTPUT_FILE = "gujarat_schemes.csv"
+OUTPUT_FILE = "data/raw/gujarat_schemes.csv"
 
 # Number of schemes per page on the site
 PAGE_SIZE   = 10
@@ -61,6 +62,9 @@ RETRY_DELAY = 4.0
 
 # Normal delay between successful pages
 PAGE_DELAY  = 0.5
+
+# State name to tag all schemes with (matches the URL filter)
+STATE_NAME  = "Gujarat"
 
 
 # Function to extract scheme data from API response
@@ -93,6 +97,16 @@ def extract_from_v6(data: dict) -> list:
         if not name:
             continue
 
+        # Try to get state from API data; fall back to STATE_NAME constant
+        state_val = ""
+        raw_state = fields.get("state") or fields.get("stateName") or []
+        if isinstance(raw_state, list):
+            state_val = ", ".join(raw_state).strip()
+        elif isinstance(raw_state, str):
+            state_val = raw_state.strip()
+        if not state_val:
+            state_val = STATE_NAME
+
         # Add scheme info to list
         schemes.append({
 
@@ -101,6 +115,9 @@ def extract_from_v6(data: dict) -> list:
 
             # Build full scheme URL using slug
             "scheme_link": f"{SCHEME_BASE}{slug}" if slug else "",
+
+            # State the scheme belongs to
+            "state":       state_val,
 
             # Join multiple categories into one string
             "category":    ", ".join(fields.get("schemeCategory") or []),
@@ -417,8 +434,8 @@ def scrape():
 # Function to save schemes into CSV file
 def save_csv(schemes: list, path: str):
 
-    # CSV column names
-    fields = ["scheme_name", "scheme_link", "category", "description"]
+    # CSV column names — "state" added after "scheme_link"
+    fields = ["scheme_name", "scheme_link", "state", "category", "description"]
 
     # Open file for writing
     with open(path, "w", newline="", encoding="utf-8-sig") as f:

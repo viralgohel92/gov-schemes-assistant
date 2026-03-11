@@ -1,13 +1,12 @@
 """
 Gujarat Schemes Detail Scraper  (FINAL)
 -----------------------------------------
-Reads gujarat_schemes.csv (scheme_name, scheme_link, category) and
-scrapes Details, Benefits, Eligibility, Application Process, Documents Required
-from each scheme page by extracting text between <h3 font-semibold> headings.
+Reads gujarat_schemes.csv and scrapes Details, Benefits, Eligibility,
+Application Process, Documents Required from each scheme page.
 
-Install:
-    pip install playwright
-    playwright install chromium
+Supports BOTH h3 class variants found on myscheme.gov.in:
+  - class="...font-semibold..."       (most schemes)
+  - class="...text-darkblue-900..."   (some schemes)
 
 Output: data/processed/scraped_schemes.csv
 """
@@ -22,7 +21,8 @@ DATA_DIR     = os.path.join(PROJECT_ROOT, "data")
 INPUT_FILE   = os.path.join(DATA_DIR, "raw", "gujarat_schemes.csv")
 OUTPUT_FILE  = os.path.join(DATA_DIR, "processed", "scraped_schemes.csv")
 
-# Sections to scrape (no Exclusions)
+SCHEME_BASE  = "https://www.myscheme.gov.in/schemes/"
+
 SECTIONS = [
     "Details",
     "Benefits",
@@ -40,26 +40,60 @@ TRAILING_NOISE = re.compile(
 )
 
 
+def is_404(page) -> bool:
+    return page.evaluate("""() => {
+        const body = document.body?.innerText || '';
+        return body.includes('Page not found') && !body.includes('Details');
+    }""")
+
+
+def name_to_slug(name: str) -> str:
+    slug = name.lower()
+    slug = re.sub(r"[^\w\s-]", "", slug)
+    slug = re.sub(r"[\s_]+", "-", slug)
+    slug = re.sub(r"-+", "-", slug).strip("-")
+    return slug
+
+
+def try_load_page(page, name: str, url: str) -> tuple:
+    candidates = [url]
+    name_no_suffix = re.sub(r"\s*\(.*?\)\s*$", "", name).strip()
+    candidates.append(f"{SCHEME_BASE}{name_to_slug(name)}")
+    candidates.append(f"{SCHEME_BASE}{name_to_slug(name_no_suffix)}")
+
+    seen, unique = set(), []
+    for c in candidates:
+        if c not in seen:
+            seen.add(c)
+            unique.append(c)
+
+    for candidate_url in unique:
+        try:
+            page.goto(candidate_url, wait_until="networkidle", timeout=60000)
+            page.wait_for_timeout(3000)
+            if not is_404(page):
+                return True, candidate_url
+            else:
+                print(f"    404: {candidate_url}")
+        except PWTimeout:
+            print(f"    timeout: {candidate_url}")
+
+    return False, url
+
+
+# ── FIXED: extract sections supporting BOTH h3 class variants ─────────────────
 def extract_sections(page) -> dict:
-    """
-    Load page once, extract all section texts by walking between
-    <h3 class="...font-semibold..."> headings in the content panel.
-    """
     return page.evaluate("""(sectionNames) => {
-        const tabUl = document.querySelector('ul:has(li.side-tabs)');
-        const flex1 = tabUl?.parentElement?.parentElement;
-        const grid  = flex1?.parentElement;
-        if (!grid) return {};
 
-        // Content panel = largest sibling div of the tab sidebar
-        const panel = Array.from(grid.children)
-            .filter(c => c !== flex1 && c.tagName === 'DIV')
-            .sort((a, b) => (b.innerText||'').length - (a.innerText||'').length)[0];
-        if (!panel) return {};
+        // ── Selector covers both class variants ───────────────────────────────
+        // Variant A: font-semibold  (original working schemes)
+        // Variant B: text-darkblue-900  (schemes that were failing)
+        const allH3 = Array.from(document.querySelectorAll('h3'));
+        const sectionH3s = allH3.filter(h => {
+            const cls = h.className || '';
+            return cls.includes('font-semibold') || cls.includes('text-darkblue-900');
+        });
 
-        // Section headings: h3 with font-semibold class
-        const sectionH3s = Array.from(panel.querySelectorAll('h3'))
-            .filter(h => h.className.includes('font-semibold'));
         if (sectionH3s.length === 0) return {};
 
         const results = {};
@@ -69,48 +103,77 @@ def extract_sections(page) -> dict:
 
             const nextH3 = sectionH3s[idx + 1];
             const parts  = [];
+
+            // Walk siblings until the next section heading
             let node = h3.nextElementSibling;
             while (node) {
                 if (node === nextH3) break;
-                if (node.tagName === 'H3' && node.className.includes('font-semibold')) break;
+                const nodeCls = node.className || '';
+                if (node.tagName === 'H3' &&
+                    (nodeCls.includes('font-semibold') || nodeCls.includes('text-darkblue-900'))) break;
+
                 const text = (node.innerText || '').trim();
                 if (text) parts.push(text);
                 node = node.nextElementSibling;
             }
+
+            // If siblings gave nothing, try searching inside the whole page
+            // by finding the content between this heading and the next
+            if (parts.length === 0) {
+                const parent = h3.parentElement;
+                if (parent) {
+                    let sibling = h3.nextElementSibling;
+                    while (sibling) {
+                        const sc = sibling.className || '';
+                        if (sibling.tagName === 'H3' &&
+                            (sc.includes('font-semibold') || sc.includes('text-darkblue-900'))) break;
+                        const t = (sibling.innerText || '').trim();
+                        if (t) parts.push(t);
+                        sibling = sibling.nextElementSibling;
+                    }
+                }
+            }
+
             results[label] = parts.join('\\n').trim();
         });
+
         return results;
     }""", SECTIONS)
 
 
-def scrape_scheme(page, name: str, url: str, category: str) -> dict:
+def scrape_scheme(page, name: str, url: str, state: str, category: str) -> dict:
     print(f"  {name[:70]}")
     result = {
         "scheme_name": name,
         "scheme_link": url,
+        "state":       state,
         "category":    category,
         "error":       "",
     }
     for s in SECTIONS:
         result[col(s)] = "Not found"
 
-    try:
-        page.goto(url, wait_until="domcontentloaded", timeout=30000)
-    except PWTimeout:
-        print("    ⚠ Load timeout")
-        result["error"] = "page load timeout"
+    success, final_url = try_load_page(page, name, url)
+
+    if not success:
+        print(f"    X All URL attempts failed")
+        result["error"] = "404 - not found on myscheme.gov.in"
         return result
 
+    if final_url != url:
+        print(f"    Working URL: {final_url}")
+        result["scheme_link"] = final_url
+
+    # Wait for either known h3 class to appear
     try:
-        page.wait_for_selector("h3[class*='font-semibold']", timeout=10000)
+        page.wait_for_selector(
+            "h3[class*='font-semibold'], h3[class*='text-darkblue-900']",
+            timeout=15000
+        )
     except PWTimeout:
-        try:
-            page.wait_for_selector("li.side-tabs", timeout=5000)
-        except PWTimeout:
-            pass
+        pass
 
     page.wait_for_timeout(1500)
-
     sections = extract_sections(page)
 
     for s in SECTIONS:
@@ -130,14 +193,15 @@ def main():
         for row in csv.DictReader(f):
             name     = row.get("scheme_name", "").strip()
             url      = (row.get("scheme_link") or row.get("link") or "").strip()
+            state    = row.get("state", "").strip()
             category = row.get("category", "").strip()
             if name and url:
-                schemes.append((name, url, category))
+                schemes.append((name, url, state, category))
 
     print(f"[+] Loaded {len(schemes)} schemes\n")
 
     fieldnames = (
-        ["scheme_name", "scheme_link", "category"]
+        ["scheme_name", "scheme_link", "state", "category"]
         + [col(s) for s in SECTIONS]
         + ["error"]
     )
@@ -159,15 +223,15 @@ def main():
             writer = csv.DictWriter(out_f, fieldnames=fieldnames)
             writer.writeheader()
 
-            for i, (name, url, category) in enumerate(schemes, 1):
+            for i, (name, url, state, category) in enumerate(schemes, 1):
                 print(f"\n[{i}/{len(schemes)}]", end=" ")
                 try:
-                    row = scrape_scheme(bpage, name, url, category)
+                    row = scrape_scheme(bpage, name, url, state, category)
                 except Exception as e:
-                    print(f"  ✗ {e}")
+                    print(f"  X {e}")
                     row = {k: "" for k in fieldnames}
                     row.update({"scheme_name": name, "scheme_link": url,
-                                "category": category, "error": str(e)})
+                                "state": state, "category": category, "error": str(e)})
 
                 writer.writerow(row)
                 out_f.flush()
@@ -175,7 +239,7 @@ def main():
 
         browser.close()
 
-    print(f"\n✅ Done! Saved to: {OUTPUT_FILE}")
+    print(f"\nDone! Saved to: {OUTPUT_FILE}")
 
 
 if __name__ == "__main__":
