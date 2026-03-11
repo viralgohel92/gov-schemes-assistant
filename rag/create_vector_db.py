@@ -12,7 +12,14 @@ for _,row in df.iterrows():
     text = f"""
     Scheme name :{row['scheme_name']}
     Description :{row['details']}
+    category : {row['category']}
+    benefits : {row['benefits']}
+    eligibility : {row['eligibility']}
+    application_process : {row['application_process']}
+    required_documents : {row['documents_required']}
+    state : {row['state']}
     Link : {row['scheme_link']}
+
     """
 
     documents.append(Document(page_content=text))
