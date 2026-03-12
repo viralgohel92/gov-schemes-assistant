@@ -1,0 +1,979 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>🇮🇳 Yojana AI — Government Scheme Assistant</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&family=Noto+Sans:ital,wght@0,300;0,400;0,500;1,300&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --saffron: #FF9933;
+      --deep-saffron: #e07000;
+      --green: #138808;
+      --navy: #000080;
+      --cream: #FFF8EE;
+      --card-bg: #ffffff;
+      --chat-bg: #f5f0e8;
+      --border: #e8dcc8;
+      --text: #1a1a2e;
+      --muted: #7a6f5e;
+      --ai-bubble: #ffffff;
+      --user-bubble: #000080;
+      --shadow: 0 2px 16px rgba(0,0,0,0.08);
+    }
+
+    body {
+      font-family: 'Noto Sans', sans-serif;
+      background: var(--chat-bg);
+      color: var(--text);
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* ── Header ── */
+    header {
+      background: linear-gradient(135deg, #000080 0%, #0a0a6e 60%, #FF9933 150%);
+      color: white;
+      padding: 0 24px;
+      height: 64px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-shrink: 0;
+      box-shadow: 0 2px 20px rgba(0,0,128,0.3);
+      position: relative;
+      overflow: hidden;
+    }
+    header::after {
+      content: '';
+      position: absolute;
+      bottom: 0; left: 0; right: 0;
+      height: 3px;
+      background: linear-gradient(90deg, #FF9933 33%, #ffffff 33% 66%, #138808 66%);
+    }
+    .header-left {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .flag-icon {
+      font-size: 28px;
+      line-height: 1;
+    }
+    .brand-text {
+      font-family: 'Rajdhani', sans-serif;
+    }
+    .brand-text h1 {
+      font-size: 20px;
+      font-weight: 700;
+      letter-spacing: 1px;
+      line-height: 1;
+    }
+    .brand-text span {
+      font-size: 11px;
+      font-weight: 400;
+      opacity: 0.8;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+    }
+    .header-actions {
+      display: flex;
+      gap: 10px;
+    }
+    .btn-ghost {
+      background: rgba(255,255,255,0.12);
+      border: 1px solid rgba(255,255,255,0.25);
+      color: white;
+      padding: 6px 14px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-family: 'Rajdhani', sans-serif;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .btn-ghost:hover { background: rgba(255,255,255,0.22); }
+    .lang-selector {
+      display: flex;
+      gap: 3px;
+      background: rgba(255,255,255,0.1);
+      border-radius: 8px;
+      padding: 3px;
+    }
+    .lang-btn {
+      background: transparent;
+      border: none;
+      color: rgba(255,255,255,0.7);
+      padding: 4px 10px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-family: 'Rajdhani', sans-serif;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.2s;
+      letter-spacing: 0.5px;
+    }
+    .lang-btn:hover { color: white; background: rgba(255,255,255,0.15); }
+    .lang-btn.active { background: white; color: var(--navy); }
+
+    /* ── Suggestions bar ── */
+    .suggestions-bar {
+      background: white;
+      border-bottom: 1px solid var(--border);
+      padding: 8px 20px;
+      display: flex;
+      gap: 8px;
+      overflow-x: auto;
+      flex-shrink: 0;
+      scrollbar-width: none;
+    }
+    .suggestions-bar::-webkit-scrollbar { display: none; }
+    .chip {
+      white-space: nowrap;
+      background: var(--cream);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 5px 14px;
+      font-size: 12px;
+      color: var(--navy);
+      cursor: pointer;
+      transition: all 0.2s;
+      font-family: 'Noto Sans', sans-serif;
+      flex-shrink: 0;
+    }
+    .chip:hover {
+      background: var(--navy);
+      color: white;
+      border-color: var(--navy);
+    }
+
+    /* ── Chat area ── */
+    .chat-container {
+      flex: 1;
+      overflow-y: auto;
+      padding: 24px 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      scroll-behavior: smooth;
+    }
+
+    /* Welcome */
+    .welcome-card {
+      background: white;
+      border-radius: 16px;
+      padding: 32px;
+      text-align: center;
+      border: 1px solid var(--border);
+      box-shadow: var(--shadow);
+      max-width: 560px;
+      margin: 20px auto 0;
+    }
+    .welcome-card .wheel {
+      font-size: 40px;
+      margin-bottom: 12px;
+      display: block;
+      animation: spin 8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .welcome-card h2 {
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 22px;
+      color: var(--navy);
+      margin-bottom: 8px;
+    }
+    .welcome-card p {
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.6;
+    }
+
+    /* Message row */
+    .msg-row {
+      display: flex;
+      gap: 10px;
+      max-width: 820px;
+      width: 100%;
+      animation: fadeUp 0.25s ease;
+    }
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .msg-row.user { align-self: flex-end; flex-direction: row-reverse; }
+    .msg-row.ai { align-self: flex-start; }
+
+    .avatar {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 15px;
+      flex-shrink: 0;
+      margin-top: 2px;
+    }
+    .avatar.ai { background: linear-gradient(135deg, #000080, #4444cc); color: white; }
+    .avatar.user { background: var(--saffron); color: white; }
+
+    .bubble {
+      border-radius: 14px;
+      padding: 12px 16px;
+      max-width: calc(100% - 50px);
+      font-size: 14px;
+      line-height: 1.65;
+    }
+    .bubble.ai {
+      background: var(--ai-bubble);
+      border: 1px solid var(--border);
+      box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+      border-top-left-radius: 4px;
+    }
+    .bubble.user {
+      background: var(--user-bubble);
+      color: white;
+      border-top-right-radius: 4px;
+    }
+
+    /* Scheme Cards */
+    .schemes-wrapper {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      width: 100%;
+    }
+    .scheme-card {
+      background: white;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 1px 8px rgba(0,0,0,0.06);
+    }
+    .scheme-card-header {
+      background: linear-gradient(135deg, #000080, #2020aa);
+      color: white;
+      padding: 12px 16px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .scheme-number {
+      background: rgba(255,255,255,0.2);
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 11px;
+      font-weight: 700;
+      flex-shrink: 0;
+    }
+    .scheme-title {
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 15px;
+      font-weight: 700;
+      letter-spacing: 0.3px;
+    }
+    .scheme-state-badge {
+      margin-left: auto;
+      background: var(--saffron);
+      color: white;
+      padding: 2px 10px;
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+    .scheme-body {
+      padding: 16px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+    .scheme-field {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .scheme-field.full { grid-column: 1 / -1; }
+    .field-label {
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--saffron);
+      font-weight: 700;
+      font-family: 'Rajdhani', sans-serif;
+    }
+    .field-value {
+      font-size: 13px;
+      color: var(--text);
+      line-height: 1.5;
+    }
+    .link-value {
+      color: var(--navy);
+      text-decoration: none;
+      font-size: 13px;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      border-bottom: 1px dashed var(--navy);
+    }
+    .link-value:hover { color: var(--deep-saffron); border-color: var(--deep-saffron); }
+    .divider { height: 1px; background: var(--border); grid-column: 1 / -1; }
+    .category-badge {
+      display: inline-block;
+      background: #EEF2FF;
+      color: #3730a3;
+      padding: 2px 10px;
+      border-radius: 12px;
+      font-size: 12px;
+    }
+
+    /* Typing indicator */
+    .typing-row { align-self: flex-start; }
+    .typing-dots {
+      display: flex;
+      gap: 5px;
+      padding: 14px 18px;
+      background: white;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      border-top-left-radius: 4px;
+    }
+    .typing-dots span {
+      width: 7px; height: 7px;
+      background: var(--muted);
+      border-radius: 50%;
+      animation: bounce 1.2s infinite;
+    }
+    .typing-dots span:nth-child(2) { animation-delay: 0.2s; }
+    .typing-dots span:nth-child(3) { animation-delay: 0.4s; }
+    @keyframes bounce {
+      0%,60%,100% { transform: translateY(0); }
+      30% { transform: translateY(-6px); }
+    }
+
+    /* ── Input bar ── */
+    .input-area {
+      background: white;
+      border-top: 1px solid var(--border);
+      padding: 14px 20px;
+      flex-shrink: 0;
+    }
+    .input-row {
+      display: flex;
+      gap: 10px;
+      align-items: flex-end;
+      max-width: 820px;
+      margin: 0 auto;
+    }
+    #question-input {
+      flex: 1;
+      border: 1.5px solid var(--border);
+      border-radius: 12px;
+      padding: 12px 16px;
+      font-size: 14px;
+      font-family: 'Noto Sans', sans-serif;
+      resize: none;
+      outline: none;
+      line-height: 1.5;
+      max-height: 120px;
+      transition: border-color 0.2s;
+      background: var(--cream);
+    }
+    #question-input:focus { border-color: var(--navy); }
+    #question-input::placeholder { color: #b0a090; }
+    .send-btn {
+      background: var(--navy);
+      color: white;
+      border: none;
+      border-radius: 12px;
+      width: 46px;
+      height: 46px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      flex-shrink: 0;
+      transition: all 0.2s;
+      font-size: 18px;
+    }
+    .send-btn:hover { background: var(--deep-saffron); transform: scale(1.05); }
+    .send-btn:disabled { background: #ccc; cursor: not-allowed; transform: none; }
+    .input-hint {
+      text-align: center;
+      font-size: 11px;
+      color: var(--muted);
+      margin-top: 6px;
+    }
+
+    /* Scrollbar */
+    .chat-container::-webkit-scrollbar { width: 6px; }
+    .chat-container::-webkit-scrollbar-track { background: transparent; }
+    .chat-container::-webkit-scrollbar-thumb { background: #d0c8b8; border-radius: 3px; }
+
+    /* ── Eligibility Result Cards ── */
+    .eligibility-wrapper { display: flex; flex-direction: column; gap: 10px; width: 100%; }
+
+    .eligibility-header {
+      background: linear-gradient(135deg, #0a5c0a, #138808);
+      color: white;
+      border-radius: 12px 12px 0 0;
+      padding: 12px 16px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 15px;
+      font-weight: 700;
+    }
+    .profile-summary {
+      background: #f0fff0;
+      border: 1px solid #b8e0b8;
+      border-radius: 8px;
+      padding: 12px 16px;
+      margin-bottom: 4px;
+    }
+    .profile-summary-title {
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--green);
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+    .profile-tags { display: flex; flex-wrap: wrap; gap: 6px; }
+    .profile-tag {
+      background: white;
+      border: 1px solid #b8e0b8;
+      border-radius: 20px;
+      padding: 3px 10px;
+      font-size: 12px;
+      color: #0a5c0a;
+    }
+    .eligible-scheme-card {
+      background: white;
+      border: 1px solid #c8e6c9;
+      border-left: 4px solid var(--green);
+      border-radius: 10px;
+      padding: 14px 16px;
+    }
+    .eligible-scheme-name {
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--navy);
+      margin-bottom: 6px;
+    }
+    .eligible-why {
+      font-size: 12px;
+      color: #2e7d32;
+      background: #f1f8e9;
+      border-radius: 6px;
+      padding: 6px 10px;
+      margin-bottom: 6px;
+      line-height: 1.5;
+    }
+    .eligible-meta { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+    .eligible-badge {
+      font-size: 11px;
+      background: #EEF2FF;
+      color: #3730a3;
+      padding: 2px 8px;
+      border-radius: 10px;
+    }
+    .eligible-badge.state { background: #FFF3E0; color: #e65100; }
+
+    /* ── Eligibility For Shown Cards ── */
+    .check-scheme-card {
+      background: white;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 14px 16px;
+      display: flex;
+      gap: 12px;
+      align-items: flex-start;
+    }
+    .check-icon { font-size: 20px; flex-shrink: 0; margin-top: 1px; }
+    .check-scheme-name {
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--navy);
+      margin-bottom: 4px;
+    }
+    .check-reason { font-size: 12px; color: var(--muted); line-height: 1.5; }
+    .check-scheme-card.eligible { border-left: 4px solid var(--green); }
+    .check-scheme-card.not-eligible { border-left: 4px solid #e53935; }
+    .summary-bar {
+      background: var(--navy);
+      color: white;
+      border-radius: 8px;
+      padding: 10px 16px;
+      font-size: 13px;
+      display: flex;
+      gap: 16px;
+      align-items: center;
+      font-family: 'Rajdhani', sans-serif;
+      font-weight: 600;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="header-left">
+    <span class="flag-icon">🇮🇳</span>
+    <div class="brand-text">
+      <h1>YOJANA AI</h1>
+      <span>Government Scheme Assistant</span>
+    </div>
+  </div>
+  <div class="header-actions">
+    <div class="lang-selector">
+      <button class="lang-btn active" data-lang="en" onclick="setLang('en')">EN</button>
+      <button class="lang-btn" data-lang="hi" onclick="setLang('hi')">हिं</button>
+      <button class="lang-btn" data-lang="gu" onclick="setLang('gu')">ગુ</button>
+    </div>
+    <button class="btn-ghost" onclick="clearChat()">⟳ New Chat</button>
+  </div>
+</header>
+
+<div class="suggestions-bar" id="suggestions">
+  <div class="chip" onclick="sendChip(this)">Schemes for farmers 🌾</div>
+  <div class="chip" onclick="sendChip(this)">Women welfare schemes</div>
+  <div class="chip" onclick="sendChip(this)">Education scholarships</div>
+  <div class="chip" onclick="sendChip(this)">Healthcare schemes</div>
+  <div class="chip" onclick="sendChip(this)">Which schemes am I eligible for?</div>
+  <div class="chip" onclick="sendChip(this)">PM housing scheme</div>
+  <div class="chip" onclick="sendChip(this)">Startup schemes for youth</div>
+  <div class="chip" onclick="sendChip(this)">Schemes in Gujarat</div>
+  <div class="chip" onclick="sendChip(this)">Skill development programs</div>
+</div>
+
+<div class="chat-container" id="chat">
+  <div class="welcome-card" id="welcome-card">
+    <span class="wheel">☸️</span>
+    <h2 id="welcome-title">Jai Hind! How can I help you?</h2>
+    <p id="welcome-text">Ask me about any Indian government scheme — eligibility, benefits, required documents, application process, and official links.</p>
+  </div>
+</div>
+
+<div class="input-area">
+  <div class="input-row">
+    <textarea id="question-input" rows="1" placeholder="Ask about any government scheme…" onkeydown="handleKey(event)" oninput="autoResize(this)"></textarea>
+    <button class="send-btn" id="send-btn" onclick="sendMessage()">➤</button>
+  </div>
+  <p class="input-hint">Press Enter to send · Shift+Enter for new line</p>
+</div>
+
+<script>
+const chat = document.getElementById('chat');
+const input = document.getElementById('question-input');
+const sendBtn = document.getElementById('send-btn');
+
+function autoResize(el) {
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, 120) + 'px';
+}
+
+function handleKey(e) {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+}
+
+function sendChip(el) {
+  input.value = el.textContent.trim();
+  sendMessage();
+}
+
+function scrollBottom() {
+  setTimeout(() => chat.scrollTop = chat.scrollHeight, 50);
+}
+
+function addUserMessage(text) {
+  const row = document.createElement('div');
+  row.className = 'msg-row user';
+  row.innerHTML = `
+    <div class="avatar user">👤</div>
+    <div class="bubble user">${escapeHtml(text)}</div>`;
+  chat.appendChild(row);
+  scrollBottom();
+}
+
+function addTyping() {
+  const row = document.createElement('div');
+  row.className = 'msg-row ai typing-row';
+  row.id = 'typing';
+  row.innerHTML = `
+    <div class="avatar ai">🤖</div>
+    <div class="typing-dots"><span></span><span></span><span></span></div>`;
+  chat.appendChild(row);
+  scrollBottom();
+  return row;
+}
+
+function removeTyping() {
+  const t = document.getElementById('typing');
+  if (t) t.remove();
+}
+
+function escapeHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>');
+}
+
+function renderResult(result) {
+  syncLangFromResponse(result);
+  const row = document.createElement('div');
+  row.className = 'msg-row ai';
+  const avatar = `<div class="avatar ai">🤖</div>`;
+  let content = '';
+
+  if (result.type === 'conversational') {
+    content = `<div class="bubble ai">${escapeHtml(result.reply)}</div>`;
+  }
+  else if (result.type === 'names_only') {
+    content = `<div class="bubble ai">
+      <strong style="color:var(--navy);font-family:'Rajdhani',sans-serif;font-size:15px;">📋 ${L().found}</strong>
+      <div style="margin-top:10px;line-height:2">${escapeHtml(result.reply)}</div>
+    </div>`;
+  }
+  else if (result.type === 'specific_field') {
+    const fl = result.field || '';
+    const fieldLabel = (L().field_labels[fl] || fl).replace(/_/g, ' ');
+    content = `<div class="bubble ai">
+      <strong style="color:var(--navy);font-family:'Rajdhani',sans-serif;font-size:15px;">📌 ${fieldLabel}</strong>
+      <div style="margin-top:10px">${escapeHtml(result.reply)}</div>
+    </div>`;
+  }
+  else if (result.type === 'full_detail') {
+    const cards = (result.schemes || []).map((s, i) => buildSchemeCard(s, i + 1)).join('');
+    content = `<div class="schemes-wrapper">${cards}</div>`;
+  }
+  else if (result.type === 'eligibility_result') {
+    content = buildEligibilityResult(result);
+  }
+  else if (result.type === 'eligibility_for_shown') {
+    content = buildEligibilityForShown(result);
+  }
+  else if (result.error) {
+    content = `<div class="bubble ai" style="color:#c00;">⚠️ Error: ${escapeHtml(result.error)}</div>`;
+  }
+
+  row.innerHTML = avatar + content;
+  chat.appendChild(row);
+  scrollBottom();
+}
+
+function buildSchemeCard(s, i) {
+  const FL = L().field_labels;
+  const link = s.official_link && !['not available','n/a','none',''].includes((s.official_link||'').toLowerCase())
+    ? `<a href="${escapeHtml(s.official_link)}" target="_blank" class="link-value">🔗 ${L().visit_site}</a>`
+    : `<span class="field-value" style="color:var(--muted)">Not available</span>`;
+
+  return `<div class="scheme-card">
+    <div class="scheme-card-header">
+      <div class="scheme-number">${i}</div>
+      <div class="scheme-title">${escapeHtml(s.scheme_name || 'Unnamed Scheme')}</div>
+      ${s.state && s.state.toLowerCase() !== 'not available' ? `<div class="scheme-state-badge">${escapeHtml(s.state)}</div>` : ''}
+    </div>
+    <div class="scheme-body">
+      ${s.category && s.category.toLowerCase() !== 'not available' ? `
+      <div class="scheme-field full">
+        <span class="field-label">${FL.category}</span>
+        <span class="category-badge">${escapeHtml(s.category)}</span>
+      </div>` : ''}
+      <div class="divider"></div>
+      <div class="scheme-field full">
+        <span class="field-label">${FL.description}</span>
+        <span class="field-value">${escapeHtml(s.description || 'Not available')}</span>
+      </div>
+      <div class="scheme-field">
+        <span class="field-label">${FL.benefits}</span>
+        <span class="field-value">${escapeHtml(s.benefits || 'Not available')}</span>
+      </div>
+      <div class="scheme-field">
+        <span class="field-label">${FL.eligibility}</span>
+        <span class="field-value">${escapeHtml(s.eligibility || 'Not available')}</span>
+      </div>
+      <div class="scheme-field">
+        <span class="field-label">${FL.documents_required}</span>
+        <span class="field-value">${escapeHtml(s.documents_required || 'Not available')}</span>
+      </div>
+      <div class="scheme-field">
+        <span class="field-label">${FL.application_process}</span>
+        <span class="field-value">${escapeHtml(s.application_process || 'Not available')}</span>
+      </div>
+      <div class="divider"></div>
+      <div class="scheme-field full">
+        <span class="field-label">${FL.official_link}</span>
+        ${link}
+      </div>
+    </div>
+  </div>`;
+}
+
+function buildProfileSummary(profile) {
+  if (!profile) return '';
+  const LABELS = L().field_labels;
+  const PROFILE_LABELS = {
+    age: 'Age', income: 'Income', occupation: 'Occupation',
+    state: LABELS.state, gender: 'Gender',
+    caste_category: 'Category', extra: 'Other'
+  };
+  const GENDER_ICON = { female: '👩', woman: '👩', male: '👨', man: '👨' };
+  const tags = Object.entries(profile)
+    .filter(([, v]) => v)
+    .map(([k, v]) => {
+      let display = escapeHtml(String(v));
+      if (k === 'gender') {
+        const icon = GENDER_ICON[(String(v)).toLowerCase()] || '🧑';
+        display = `${icon} ${display}`;
+      }
+      return `<span class="profile-tag">${PROFILE_LABELS[k] || k}: ${display}</span>`;
+    }).join('');
+  if (!tags) return '';
+  return `<div class="profile-summary">
+    <div class="profile-summary-title">${L().your_profile}</div>
+    <div class="profile-tags">${tags}</div>
+  </div>`;
+}
+
+function buildEligibilityResult(result) {
+  const schemes = result.schemes || [];
+  const profileHtml = buildProfileSummary(result.profile);
+  const cards = schemes.map((s, i) => {
+    const link = s.official_link && !['not available','n/a','none',''].includes((s.official_link||'').toLowerCase())
+      ? `<a href="${escapeHtml(s.official_link)}" target="_blank" class="link-value" style="font-size:12px;">🔗 ${L().visit_site}</a>`
+      : '';
+    return `<div class="eligible-scheme-card">
+      <div class="eligible-scheme-name">${i+1}. ${escapeHtml(s.scheme_name || 'Unknown')}</div>
+      ${s.why_eligible ? `<div class="eligible-why">✅ ${escapeHtml(s.why_eligible)}</div>` : ''}
+      <div class="eligible-meta">
+        ${s.category ? `<span class="eligible-badge">${escapeHtml(s.category)}</span>` : ''}
+        ${s.state ? `<span class="eligible-badge state">📍 ${escapeHtml(s.state)}</span>` : ''}
+        ${link}
+      </div>
+    </div>`;
+  }).join('');
+
+  return `<div class="eligibility-wrapper">
+    <div class="eligibility-header">${L().eligibility_results(schemes.length)}</div>
+    ${profileHtml}
+    ${cards}
+    <div class="bubble ai" style="font-size:13px;color:var(--muted);">
+      💡 Ask for full details of any scheme above.
+    </div>
+  </div>`;
+}
+
+function buildEligibilityForShown(result) {
+  const schemes = result.schemes || [];
+  const profileHtml = buildProfileSummary(result.profile);
+  const eligible = schemes.filter(s => s.is_eligible);
+  const notEligible = schemes.filter(s => !s.is_eligible);
+
+  const cards = schemes.map((s, i) => {
+    const icon = s.is_eligible ? '✅' : '❌';
+    const cls = s.is_eligible ? 'eligible' : 'not-eligible';
+    const link = s.is_eligible && s.official_link && !['not available','n/a','none',''].includes((s.official_link||'').toLowerCase())
+      ? `<a href="${escapeHtml(s.official_link)}" target="_blank" class="link-value" style="font-size:12px;">🔗 ${L().visit_site}</a>` : '';
+    return `<div class="check-scheme-card ${cls}">
+      <div class="check-icon">${icon}</div>
+      <div>
+        <div class="check-scheme-name">${i+1}. ${escapeHtml(s.scheme_name || 'Unknown')}</div>
+        ${s.reason ? `<div class="check-reason">${escapeHtml(s.reason)}</div>` : ''}
+        ${link}
+      </div>
+    </div>`;
+  }).join('');
+
+  return `<div class="eligibility-wrapper">
+    <div class="eligibility-header">${L().eligibility_check(schemes.length)}</div>
+    ${profileHtml}
+    ${cards}
+    <div class="summary-bar">${L().summary(eligible.length, notEligible.length)}</div>
+  </div>`;
+}
+
+// ── Session management (FastAPI doesn't use cookies — we manage session_id in JS)
+let sessionId = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2);
+
+async function sendMessage() {
+  const q = input.value.trim();
+  if (!q) return;
+
+  addUserMessage(q);
+  input.value = '';
+  input.style.height = 'auto';
+  sendBtn.disabled = true;
+  addTyping();
+
+  try {
+    const res = await fetch('/ask', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ question: q, session_id: sessionId })
+    });
+    const data = await res.json();
+    removeTyping();
+    renderResult(data);
+  } catch (err) {
+    removeTyping();
+    renderResult({ error: 'Network error. Please try again.' });
+  } finally {
+    sendBtn.disabled = false;
+    input.focus();
+  }
+}
+
+// ── Language Support ────────────────────────────────────────────────────────
+const LANG_DATA = {
+  en: {
+    welcome_title: "Jai Hind! How can I help you?",
+    welcome_text: "Ask me about any Indian government scheme — eligibility, benefits, required documents, application process, and official links.",
+    placeholder: "Ask about any government scheme…",
+    hint: "Press Enter to send · Shift+Enter for new line",
+    new_chat: "⟳ New Chat",
+    new_chat_title: "New conversation started!",
+    new_chat_text: "Ask me about any Indian government scheme.",
+    chips: [
+      "Schemes for farmers 🌾", "Women welfare schemes", "Education scholarships",
+      "Healthcare schemes", "Which schemes am I eligible for?",
+      "PM housing scheme", "Startup schemes for youth",
+      "Schemes in Gujarat", "Skill development programs"
+    ],
+    field_labels: {
+      scheme_name:"Scheme Name", description:"Description", category:"Category",
+      benefits:"Benefits", eligibility:"Eligibility", documents_required:"Documents Required",
+      application_process:"Application Process", state:"State", official_link:"Official Link"
+    },
+    visit_site: "Visit Official Site ↗",
+    found: "Government Schemes Found",
+    eligibility_results: (n) => `🎯 Eligibility Results — ${n} Scheme(s) Found`,
+    eligibility_check: (n) => `🎯 Eligibility Check — ${n} Schemes Reviewed`,
+    summary: (e, ne) => `✅ ${e} Eligible  |  ❌ ${ne} Not Eligible`,
+    your_profile: "👤 YOUR PROFILE",
+  },
+  hi: {
+    welcome_title: "जय हिंद! मैं आपकी कैसे मदद कर सकता हूँ?",
+    welcome_text: "किसी भी सरकारी योजना के बारे में पूछें — पात्रता, लाभ, आवश्यक दस्तावेज़, आवेदन प्रक्रिया और आधिकारिक लिंक।",
+    placeholder: "सरकारी योजना के बारे में पूछें…",
+    hint: "Enter दबाएं भेजने के लिए · Shift+Enter नई लाइन के लिए",
+    new_chat: "⟳ नई बातचीत",
+    new_chat_title: "नई बातचीत शुरू हुई!",
+    new_chat_text: "किसी भी सरकारी योजना के बारे में पूछें।",
+    chips: [
+      "किसानों के लिए योजनाएं 🌾", "महिला कल्याण योजनाएं", "शिक्षा छात्रवृत्ति",
+      "स्वास्थ्य योजनाएं", "मैं किस योजना के लिए पात्र हूँ?",
+      "PM आवास योजना", "युवाओं के लिए स्टार्टअप योजनाएं",
+      "गुजरात में योजनाएं", "कौशल विकास कार्यक्रम"
+    ],
+    field_labels: {
+      scheme_name:"योजना का नाम", description:"विवरण", category:"श्रेणी",
+      benefits:"लाभ", eligibility:"पात्रता", documents_required:"आवश्यक दस्तावेज़",
+      application_process:"आवेदन प्रक्रिया", state:"राज्य", official_link:"आधिकारिक लिंक"
+    },
+    visit_site: "आधिकारिक साइट देखें ↗",
+    found: "सरकारी योजनाएं मिलीं",
+    eligibility_results: (n) => `🎯 पात्रता परिणाम — ${n} योजना(एं) मिलीं`,
+    eligibility_check: (n) => `🎯 पात्रता जाँच — ${n} योजनाएं जाँची गईं`,
+    summary: (e, ne) => `✅ ${e} पात्र  |  ❌ ${ne} अपात्र`,
+    your_profile: "👤 आपकी प्रोफ़ाइल",
+  },
+  gu: {
+    welcome_title: "જય હિંદ! હું તમારી કેવી રીતે મદદ કરી શકું?",
+    welcome_text: "કોઈ પણ સરકારી યોજના વિશે પૂછો — પાત્રતા, લાભ, જરૂરી દસ્તાવેજો, અરજી પ્રક્રિયા અને સત્તાવાર લિંક.",
+    placeholder: "સરકારી યોજના વિશે પૂછો…",
+    hint: "Enter દબાવો મોકલવા માટે · Shift+Enter નવી લીટી માટે",
+    new_chat: "⟳ નવી વાત",
+    new_chat_title: "નવી વાતચીત શરૂ થઈ!",
+    new_chat_text: "કોઈ પણ સરકારી યોજના વિશે પૂછો.",
+    chips: [
+      "ખેડૂતો માટે યોજનાઓ 🌾", "મહિલા કલ્યાણ યોજનાઓ", "શિક્ષણ શિષ્યવૃત્તિ",
+      "આરોગ્ય સેવા યોજનાઓ", "હું કઈ યોજના માટે પાત્ર છું?",
+      "PM આવાસ યોજના", "યુવાનો માટે સ્ટાર્ટઅપ યોજનાઓ",
+      "ગુજરાતમાં યોજનાઓ", "કૌશલ્ય વિકાસ કાર્યક્રમ"
+    ],
+    field_labels: {
+      scheme_name:"યોજનાનું નામ", description:"વર્ણન", category:"શ્રેણી",
+      benefits:"લાભ", eligibility:"પાત્રતા", documents_required:"જરૂરી દસ્તાવેજો",
+      application_process:"અરજી પ્રક્રિયા", state:"રાજ્ય", official_link:"સત્તાવાર લિંક"
+    },
+    visit_site: "સત્તાવાર સાઇટ જુઓ ↗",
+    found: "સરકારી યોજનાઓ મળી",
+    eligibility_results: (n) => `🎯 પાત્રતા પરિણામ — ${n} યોજના(ઓ) મળી`,
+    eligibility_check: (n) => `🎯 પાત્રતા તપાસ — ${n} યોજનાઓ તપાસવામાં આવી`,
+    summary: (e, ne) => `✅ ${e} પાત્ર  |  ❌ ${ne} અપાત્ર`,
+    your_profile: "👤 તમારી પ્રોફાઇલ",
+  }
+};
+
+let currentLang = 'en';
+
+function setLang(lang) {
+  currentLang = lang;
+  // Update active button
+  document.querySelectorAll('.lang-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.lang === lang);
+  });
+  const L = LANG_DATA[lang];
+  // Update placeholder
+  document.getElementById('question-input').placeholder = L.placeholder;
+  // Update hint
+  document.querySelector('.input-hint').textContent = L.hint;
+  // Update chips
+  const bar = document.getElementById('suggestions');
+  bar.innerHTML = L.chips.map(c =>
+    `<div class="chip" onclick="sendChip(this)">${c}</div>`
+  ).join('');
+  // Update welcome card if still showing
+  const wt = document.getElementById('welcome-title');
+  const wx = document.getElementById('welcome-text');
+  if (wt) wt.textContent = L.welcome_title;
+  if (wx) wx.textContent = L.welcome_text;
+  // Auto-send a language signal so backend detects the switch
+  // (only if chat is active - skip if still on welcome screen)
+}
+
+function L() { return LANG_DATA[currentLang]; }
+
+// Auto-detect language from server response and sync UI
+function syncLangFromResponse(result) {
+  const serverLang = result.lang;
+  if (serverLang && serverLang !== currentLang) {
+    currentLang = serverLang;
+    document.querySelectorAll('.lang-btn').forEach(b => {
+      b.classList.toggle('active', b.dataset.lang === serverLang);
+    });
+  }
+}
+
+async function clearChat() {
+  const res = await fetch('/reset', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ session_id: sessionId })
+  });
+  const data = await res.json();
+  // Use the new session_id returned by the server
+  if (data.new_session_id) sessionId = data.new_session_id;
+
+  const Lc = LANG_DATA[currentLang];
+  chat.innerHTML = `<div class="welcome-card" id="welcome-card">
+    <span class="wheel">☸️</span>
+    <h2 id="welcome-title">${Lc.new_chat_title}</h2>
+    <p id="welcome-text">${Lc.new_chat_text}</p>
+  </div>`;
+}
+</script>
+</body>
+</html>
