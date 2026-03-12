@@ -99,6 +99,28 @@
       transition: all 0.2s;
     }
     .btn-ghost:hover { background: rgba(255,255,255,0.22); }
+    .lang-selector {
+      display: flex;
+      gap: 3px;
+      background: rgba(255,255,255,0.1);
+      border-radius: 8px;
+      padding: 3px;
+    }
+    .lang-btn {
+      background: transparent;
+      border: none;
+      color: rgba(255,255,255,0.7);
+      padding: 4px 10px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-family: 'Rajdhani', sans-serif;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.2s;
+      letter-spacing: 0.5px;
+    }
+    .lang-btn:hover { color: white; background: rgba(255,255,255,0.15); }
+    .lang-btn.active { background: white; color: var(--navy); }
 
     /* ── Suggestions bar ── */
     .suggestions-bar {
@@ -517,6 +539,11 @@
     </div>
   </div>
   <div class="header-actions">
+    <div class="lang-selector">
+      <button class="lang-btn active" data-lang="en" onclick="setLang('en')">EN</button>
+      <button class="lang-btn" data-lang="hi" onclick="setLang('hi')">हिं</button>
+      <button class="lang-btn" data-lang="gu" onclick="setLang('gu')">ગુ</button>
+    </div>
     <button class="btn-ghost" onclick="clearChat()">⟳ New Chat</button>
   </div>
 </header>
@@ -534,10 +561,10 @@
 </div>
 
 <div class="chat-container" id="chat">
-  <div class="welcome-card">
+  <div class="welcome-card" id="welcome-card">
     <span class="wheel">☸️</span>
-    <h2>Jai Hind! How can I help you?</h2>
-    <p>Ask me about any Indian government scheme — eligibility, benefits, required documents, application process, and official links.</p>
+    <h2 id="welcome-title">Jai Hind! How can I help you?</h2>
+    <p id="welcome-text">Ask me about any Indian government scheme — eligibility, benefits, required documents, application process, and official links.</p>
   </div>
 </div>
 
@@ -604,9 +631,9 @@ function escapeHtml(s) {
 }
 
 function renderResult(result) {
+  syncLangFromResponse(result);
   const row = document.createElement('div');
   row.className = 'msg-row ai';
-
   const avatar = `<div class="avatar ai">🤖</div>`;
   let content = '';
 
@@ -615,14 +642,15 @@ function renderResult(result) {
   }
   else if (result.type === 'names_only') {
     content = `<div class="bubble ai">
-      <strong style="color:var(--navy);font-family:'Rajdhani',sans-serif;font-size:15px;">📋 Government Schemes Found</strong>
+      <strong style="color:var(--navy);font-family:'Rajdhani',sans-serif;font-size:15px;">📋 ${L().found}</strong>
       <div style="margin-top:10px;line-height:2">${escapeHtml(result.reply)}</div>
     </div>`;
   }
   else if (result.type === 'specific_field') {
-    const field = (result.field || '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+    const fl = result.field || '';
+    const fieldLabel = (L().field_labels[fl] || fl).replace(/_/g, ' ');
     content = `<div class="bubble ai">
-      <strong style="color:var(--navy);font-family:'Rajdhani',sans-serif;font-size:15px;">📌 ${field}</strong>
+      <strong style="color:var(--navy);font-family:'Rajdhani',sans-serif;font-size:15px;">📌 ${fieldLabel}</strong>
       <div style="margin-top:10px">${escapeHtml(result.reply)}</div>
     </div>`;
   }
@@ -646,8 +674,9 @@ function renderResult(result) {
 }
 
 function buildSchemeCard(s, i) {
-  const link = s.official_link && !['not available','n/a','none',''].includes(s.official_link.toLowerCase())
-    ? `<a href="${escapeHtml(s.official_link)}" target="_blank" class="link-value">🔗 Visit Official Site ↗</a>`
+  const FL = L().field_labels;
+  const link = s.official_link && !['not available','n/a','none',''].includes((s.official_link||'').toLowerCase())
+    ? `<a href="${escapeHtml(s.official_link)}" target="_blank" class="link-value">🔗 ${L().visit_site}</a>`
     : `<span class="field-value" style="color:var(--muted)">Not available</span>`;
 
   return `<div class="scheme-card">
@@ -659,33 +688,33 @@ function buildSchemeCard(s, i) {
     <div class="scheme-body">
       ${s.category && s.category.toLowerCase() !== 'not available' ? `
       <div class="scheme-field full">
-        <span class="field-label">Category</span>
+        <span class="field-label">${FL.category}</span>
         <span class="category-badge">${escapeHtml(s.category)}</span>
       </div>` : ''}
       <div class="divider"></div>
       <div class="scheme-field full">
-        <span class="field-label">Description</span>
+        <span class="field-label">${FL.description}</span>
         <span class="field-value">${escapeHtml(s.description || 'Not available')}</span>
       </div>
       <div class="scheme-field">
-        <span class="field-label">Benefits</span>
+        <span class="field-label">${FL.benefits}</span>
         <span class="field-value">${escapeHtml(s.benefits || 'Not available')}</span>
       </div>
       <div class="scheme-field">
-        <span class="field-label">Eligibility</span>
+        <span class="field-label">${FL.eligibility}</span>
         <span class="field-value">${escapeHtml(s.eligibility || 'Not available')}</span>
       </div>
       <div class="scheme-field">
-        <span class="field-label">Documents Required</span>
+        <span class="field-label">${FL.documents_required}</span>
         <span class="field-value">${escapeHtml(s.documents_required || 'Not available')}</span>
       </div>
       <div class="scheme-field">
-        <span class="field-label">Application Process</span>
+        <span class="field-label">${FL.application_process}</span>
         <span class="field-value">${escapeHtml(s.application_process || 'Not available')}</span>
       </div>
       <div class="divider"></div>
       <div class="scheme-field full">
-        <span class="field-label">Official Link</span>
+        <span class="field-label">${FL.official_link}</span>
         ${link}
       </div>
     </div>
@@ -694,8 +723,12 @@ function buildSchemeCard(s, i) {
 
 function buildProfileSummary(profile) {
   if (!profile) return '';
-  const LABELS = { age: 'Age', income: 'Income', occupation: 'Occupation',
-                   state: 'State', gender: 'Gender', caste_category: 'Category', extra: 'Other' };
+  const LABELS = L().field_labels;
+  const PROFILE_LABELS = {
+    age: 'Age', income: 'Income', occupation: 'Occupation',
+    state: LABELS.state, gender: 'Gender',
+    caste_category: 'Category', extra: 'Other'
+  };
   const GENDER_ICON = { female: '👩', woman: '👩', male: '👨', man: '👨' };
   const tags = Object.entries(profile)
     .filter(([, v]) => v)
@@ -705,12 +738,11 @@ function buildProfileSummary(profile) {
         const icon = GENDER_ICON[(String(v)).toLowerCase()] || '🧑';
         display = `${icon} ${display}`;
       }
-      return `<span class="profile-tag">${LABELS[k] || k}: ${display}</span>`;
-    })
-    .join('');
+      return `<span class="profile-tag">${PROFILE_LABELS[k] || k}: ${display}</span>`;
+    }).join('');
   if (!tags) return '';
   return `<div class="profile-summary">
-    <div class="profile-summary-title">👤 Your Profile</div>
+    <div class="profile-summary-title">${L().your_profile}</div>
     <div class="profile-tags">${tags}</div>
   </div>`;
 }
@@ -720,7 +752,7 @@ function buildEligibilityResult(result) {
   const profileHtml = buildProfileSummary(result.profile);
   const cards = schemes.map((s, i) => {
     const link = s.official_link && !['not available','n/a','none',''].includes((s.official_link||'').toLowerCase())
-      ? `<a href="${escapeHtml(s.official_link)}" target="_blank" class="link-value" style="font-size:12px;">🔗 Official Site ↗</a>`
+      ? `<a href="${escapeHtml(s.official_link)}" target="_blank" class="link-value" style="font-size:12px;">🔗 ${L().visit_site}</a>`
       : '';
     return `<div class="eligible-scheme-card">
       <div class="eligible-scheme-name">${i+1}. ${escapeHtml(s.scheme_name || 'Unknown')}</div>
@@ -734,7 +766,7 @@ function buildEligibilityResult(result) {
   }).join('');
 
   return `<div class="eligibility-wrapper">
-    <div class="eligibility-header">🎯 Eligibility Results — ${schemes.length} Scheme(s) Found</div>
+    <div class="eligibility-header">${L().eligibility_results(schemes.length)}</div>
     ${profileHtml}
     ${cards}
     <div class="bubble ai" style="font-size:13px;color:var(--muted);">
@@ -753,7 +785,7 @@ function buildEligibilityForShown(result) {
     const icon = s.is_eligible ? '✅' : '❌';
     const cls = s.is_eligible ? 'eligible' : 'not-eligible';
     const link = s.is_eligible && s.official_link && !['not available','n/a','none',''].includes((s.official_link||'').toLowerCase())
-      ? `<a href="${escapeHtml(s.official_link)}" target="_blank" class="link-value" style="font-size:12px;">🔗 Site ↗</a>` : '';
+      ? `<a href="${escapeHtml(s.official_link)}" target="_blank" class="link-value" style="font-size:12px;">🔗 ${L().visit_site}</a>` : '';
     return `<div class="check-scheme-card ${cls}">
       <div class="check-icon">${icon}</div>
       <div>
@@ -765,14 +797,15 @@ function buildEligibilityForShown(result) {
   }).join('');
 
   return `<div class="eligibility-wrapper">
-    <div class="eligibility-header">🎯 Eligibility Check — ${schemes.length} Schemes Reviewed</div>
+    <div class="eligibility-header">${L().eligibility_check(schemes.length)}</div>
     ${profileHtml}
     ${cards}
-    <div class="summary-bar">
-      ✅ ${eligible.length} Eligible &nbsp;|&nbsp; ❌ ${notEligible.length} Not Eligible
-    </div>
+    <div class="summary-bar">${L().summary(eligible.length, notEligible.length)}</div>
   </div>`;
 }
+
+// ── Session management (FastAPI doesn't use cookies — we manage session_id in JS)
+let sessionId = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2);
 
 async function sendMessage() {
   const q = input.value.trim();
@@ -782,13 +815,13 @@ async function sendMessage() {
   input.value = '';
   input.style.height = 'auto';
   sendBtn.disabled = true;
-  const typing = addTyping();
+  addTyping();
 
   try {
     const res = await fetch('/ask', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ question: q })
+      body: JSON.stringify({ question: q, session_id: sessionId })
     });
     const data = await res.json();
     removeTyping();
@@ -802,12 +835,143 @@ async function sendMessage() {
   }
 }
 
+// ── Language Support ────────────────────────────────────────────────────────
+const LANG_DATA = {
+  en: {
+    welcome_title: "Jai Hind! How can I help you?",
+    welcome_text: "Ask me about any Indian government scheme — eligibility, benefits, required documents, application process, and official links.",
+    placeholder: "Ask about any government scheme…",
+    hint: "Press Enter to send · Shift+Enter for new line",
+    new_chat: "⟳ New Chat",
+    new_chat_title: "New conversation started!",
+    new_chat_text: "Ask me about any Indian government scheme.",
+    chips: [
+      "Schemes for farmers 🌾", "Women welfare schemes", "Education scholarships",
+      "Healthcare schemes", "Which schemes am I eligible for?",
+      "PM housing scheme", "Startup schemes for youth",
+      "Schemes in Gujarat", "Skill development programs"
+    ],
+    field_labels: {
+      scheme_name:"Scheme Name", description:"Description", category:"Category",
+      benefits:"Benefits", eligibility:"Eligibility", documents_required:"Documents Required",
+      application_process:"Application Process", state:"State", official_link:"Official Link"
+    },
+    visit_site: "Visit Official Site ↗",
+    found: "Government Schemes Found",
+    eligibility_results: (n) => `🎯 Eligibility Results — ${n} Scheme(s) Found`,
+    eligibility_check: (n) => `🎯 Eligibility Check — ${n} Schemes Reviewed`,
+    summary: (e, ne) => `✅ ${e} Eligible  |  ❌ ${ne} Not Eligible`,
+    your_profile: "👤 YOUR PROFILE",
+  },
+  hi: {
+    welcome_title: "जय हिंद! मैं आपकी कैसे मदद कर सकता हूँ?",
+    welcome_text: "किसी भी सरकारी योजना के बारे में पूछें — पात्रता, लाभ, आवश्यक दस्तावेज़, आवेदन प्रक्रिया और आधिकारिक लिंक।",
+    placeholder: "सरकारी योजना के बारे में पूछें…",
+    hint: "Enter दबाएं भेजने के लिए · Shift+Enter नई लाइन के लिए",
+    new_chat: "⟳ नई बातचीत",
+    new_chat_title: "नई बातचीत शुरू हुई!",
+    new_chat_text: "किसी भी सरकारी योजना के बारे में पूछें।",
+    chips: [
+      "किसानों के लिए योजनाएं 🌾", "महिला कल्याण योजनाएं", "शिक्षा छात्रवृत्ति",
+      "स्वास्थ्य योजनाएं", "मैं किस योजना के लिए पात्र हूँ?",
+      "PM आवास योजना", "युवाओं के लिए स्टार्टअप योजनाएं",
+      "गुजरात में योजनाएं", "कौशल विकास कार्यक्रम"
+    ],
+    field_labels: {
+      scheme_name:"योजना का नाम", description:"विवरण", category:"श्रेणी",
+      benefits:"लाभ", eligibility:"पात्रता", documents_required:"आवश्यक दस्तावेज़",
+      application_process:"आवेदन प्रक्रिया", state:"राज्य", official_link:"आधिकारिक लिंक"
+    },
+    visit_site: "आधिकारिक साइट देखें ↗",
+    found: "सरकारी योजनाएं मिलीं",
+    eligibility_results: (n) => `🎯 पात्रता परिणाम — ${n} योजना(एं) मिलीं`,
+    eligibility_check: (n) => `🎯 पात्रता जाँच — ${n} योजनाएं जाँची गईं`,
+    summary: (e, ne) => `✅ ${e} पात्र  |  ❌ ${ne} अपात्र`,
+    your_profile: "👤 आपकी प्रोफ़ाइल",
+  },
+  gu: {
+    welcome_title: "જય હિંદ! હું તમારી કેવી રીતે મદદ કરી શકું?",
+    welcome_text: "કોઈ પણ સરકારી યોજના વિશે પૂછો — પાત્રતા, લાભ, જરૂરી દસ્તાવેજો, અરજી પ્રક્રિયા અને સત્તાવાર લિંક.",
+    placeholder: "સરકારી યોજના વિશે પૂછો…",
+    hint: "Enter દબાવો મોકલવા માટે · Shift+Enter નવી લીટી માટે",
+    new_chat: "⟳ નવી વાત",
+    new_chat_title: "નવી વાતચીત શરૂ થઈ!",
+    new_chat_text: "કોઈ પણ સરકારી યોજના વિશે પૂછો.",
+    chips: [
+      "ખેડૂતો માટે યોજનાઓ 🌾", "મહિલા કલ્યાણ યોજનાઓ", "શિક્ષણ શિષ્યવૃત્તિ",
+      "આરોગ્ય સેવા યોજનાઓ", "હું કઈ યોજના માટે પાત્ર છું?",
+      "PM આવાસ યોજના", "યુવાનો માટે સ્ટાર્ટઅપ યોજનાઓ",
+      "ગુજરાતમાં યોજનાઓ", "કૌશલ્ય વિકાસ કાર્યક્રમ"
+    ],
+    field_labels: {
+      scheme_name:"યોજનાનું નામ", description:"વર્ણન", category:"શ્રેણી",
+      benefits:"લાભ", eligibility:"પાત્રતા", documents_required:"જરૂરી દસ્તાવેજો",
+      application_process:"અરજી પ્રક્રિયા", state:"રાજ્ય", official_link:"સત્તાવાર લિંક"
+    },
+    visit_site: "સત્તાવાર સાઇટ જુઓ ↗",
+    found: "સરકારી યોજનાઓ મળી",
+    eligibility_results: (n) => `🎯 પાત્રતા પરિણામ — ${n} યોજના(ઓ) મળી`,
+    eligibility_check: (n) => `🎯 પાત્રતા તપાસ — ${n} યોજનાઓ તપાસવામાં આવી`,
+    summary: (e, ne) => `✅ ${e} પાત્ર  |  ❌ ${ne} અપાત્ર`,
+    your_profile: "👤 તમારી પ્રોફાઇલ",
+  }
+};
+
+let currentLang = 'en';
+
+function setLang(lang) {
+  currentLang = lang;
+  // Update active button
+  document.querySelectorAll('.lang-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.lang === lang);
+  });
+  const L = LANG_DATA[lang];
+  // Update placeholder
+  document.getElementById('question-input').placeholder = L.placeholder;
+  // Update hint
+  document.querySelector('.input-hint').textContent = L.hint;
+  // Update chips
+  const bar = document.getElementById('suggestions');
+  bar.innerHTML = L.chips.map(c =>
+    `<div class="chip" onclick="sendChip(this)">${c}</div>`
+  ).join('');
+  // Update welcome card if still showing
+  const wt = document.getElementById('welcome-title');
+  const wx = document.getElementById('welcome-text');
+  if (wt) wt.textContent = L.welcome_title;
+  if (wx) wx.textContent = L.welcome_text;
+  // Auto-send a language signal so backend detects the switch
+  // (only if chat is active - skip if still on welcome screen)
+}
+
+function L() { return LANG_DATA[currentLang]; }
+
+// Auto-detect language from server response and sync UI
+function syncLangFromResponse(result) {
+  const serverLang = result.lang;
+  if (serverLang && serverLang !== currentLang) {
+    currentLang = serverLang;
+    document.querySelectorAll('.lang-btn').forEach(b => {
+      b.classList.toggle('active', b.dataset.lang === serverLang);
+    });
+  }
+}
+
 async function clearChat() {
-  await fetch('/reset', { method: 'POST' });
-  chat.innerHTML = `<div class="welcome-card">
+  const res = await fetch('/reset', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ session_id: sessionId })
+  });
+  const data = await res.json();
+  // Use the new session_id returned by the server
+  if (data.new_session_id) sessionId = data.new_session_id;
+
+  const Lc = LANG_DATA[currentLang];
+  chat.innerHTML = `<div class="welcome-card" id="welcome-card">
     <span class="wheel">☸️</span>
-    <h2>New conversation started!</h2>
-    <p>Ask me about any Indian government scheme.</p>
+    <h2 id="welcome-title">${Lc.new_chat_title}</h2>
+    <p id="welcome-text">${Lc.new_chat_text}</p>
   </div>`;
 }
 </script>

@@ -14,6 +14,76 @@ from typing import List, Optional
 import re, json
 
 # -------------------------------------------------
+# Language Support
+# -------------------------------------------------
+
+SUPPORTED_LANGUAGES = {"english": "en", "hindi": "hi", "gujarati": "gu"}
+
+LANG_STRINGS = {
+    "en": {
+        "profile_request": """Sure! Please share your details so I can check eligibility:\n\n  \u2022 Age\n  \u2022 Annual Income  (e.g. 1.5 lakh, 50,000)\n  \u2022 Occupation     (e.g. student, farmer, self-employed)\n  \u2022 State          (e.g. Gujarat)\n  \u2022 Gender         (Male / Female)\n  \u2022 Caste/Category (SC / ST / OBC / General / EWS / SEBC / NT / DNT / Minority)\n\nExample:\n  age: 22, income: 1.5 lakh, occupation: student, state: Gujarat, caste: OBC, Gender: Male""",
+        "no_schemes_found": "No matching schemes found. Try providing more details like age, income, occupation, state, and caste/category.",
+        "no_additional_schemes": "No additional matching schemes found for your profile.",
+        "ask_schemes_first": "Please first ask for some schemes, then I can check your eligibility for them.",
+    },
+    "hi": {
+        "profile_request": """ज़रूर! पात्रता जाँचने के लिए कृपया अपनी जानकारी दें:\n\n  \u2022 आयु (उम्र)\n  \u2022 वार्षिक आय  (जैसे 1.5 लाख, 50,000)\n  \u2022 पेशा        (जैसे छात्र, किसान, स्व-रोजगार)\n  \u2022 राज्य       (जैसे गुजरात)\n  \u2022 लिंग        (पुरुष / महिला)\n  \u2022 जाति/श्रेणी (SC / ST / OBC / General / EWS / SEBC / NT / DNT / Minority)\n\nउदाहरण:\n  आयु: 22, आय: 1.5 लाख, पेशा: छात्र, राज्य: गुजरात, जाति: OBC, लिंग: पुरुष""",
+        "no_schemes_found": "कोई मिलती-जुलती योजना नहीं मिली। कृपया अपनी आयु, आय, पेशा, राज्य और जाति की जानकारी दें।",
+        "no_additional_schemes": "आपके प्रोफ़ाइल के लिए कोई अतिरिक्त योजना नहीं मिली।",
+        "ask_schemes_first": "कृपया पहले कोई योजना खोजें, फिर मैं उनके लिए आपकी पात्रता जाँच सकता हूँ।",
+    },
+    "gu": {
+        "profile_request": """ચોકકસ! પાત્રતા તપાસવા માટે કૃપા કરીને આ માહિતી આપો:\n\n  \u2022 ઉંમર\n  \u2022 વાર્ષિક આવક  (દા.ત. 1.5 લાખ, 50,000)\n  \u2022 વ્યવસાય      (દા.ત. વિદ્યાર્થી, ખેડૂત, સ્વ-રોજગાર)\n  \u2022 રાજ્ય        (દા.ત. ગુજરાત)\n  \u2022 જાતિ         (પુરુષ / સ્ત્રી)\n  \u2022 જ્ણાતિ/વર્ગ  (SC / ST / OBC / General / EWS / SEBC / NT / DNT / Minority)\n\nઉદાહરણ:\n  ઉંમર: 22, આવક: 1.5 લાખ, વ્યવસાય: વિદ્યાર્થી, રાજ્ય: ગુજરાત, જ્ણાતિ: OBC, જાતિ: પુરુષ""",
+        "no_schemes_found": "કોઈ મળતી યોજના મળી નહીં. કૃપા કરીને ઉંમર, આવક, વ્યવસાય, રાજ્ય અને જ્ણાતિ આપો.",
+        "no_additional_schemes": "તમારી પ્રોફાઇલ માટે કોઈ વધારાની યોજના મળી નહીં.",
+        "ask_schemes_first": "કૃપા કરીને પહેલાં કોઈ યોજના શોધો, પછી હું તમારી પાત્રતા તપાસીશ.",
+    },
+}
+
+def detect_language(text: str) -> str:
+    """Detect language: gu, hi, or en using Unicode ranges then romanized hints."""
+    if re.search(r"[\u0A80-\u0AFF]", text):
+        return "gu"
+    if re.search(r"[\u0900-\u097F]", text):
+        return "hi"
+    lower = text.lower()
+    gu_hints = ["kem cho", "tamne", "mane", "yojana", "aavak", "ummar", "vyvsa", "khedu", "rajya", "patrata"]
+    hi_hints = ["mujhe", "kaunsi", "kya hai", "kaun si", "kaise", "bataiye", "sarkari", "patrata", "labh"]
+    if any(w in lower for w in gu_hints):
+        return "gu"
+    if any(w in lower for w in hi_hints):
+        return "hi"
+    return "en"
+
+def translate_to_english(text: str, source_lang: str) -> str:
+    """Translate user input to English for internal processing."""
+    if source_lang == "en":
+        return text
+    lang_name = {"hi": "Hindi", "gu": "Gujarati"}[source_lang]
+    r = llm.invoke(
+        f"Translate this {lang_name} text to English.\n"
+        f"Keep unchanged: scheme names, SC/ST/OBC/EWS/SEBC, state names, numbers, rupee amounts.\n"
+        f"Return ONLY the English translation.\n\n{lang_name}: {text}\n\nEnglish:"
+    )
+    return r.content.strip()
+
+def translate_response(text: str, target_lang: str) -> str:
+    """Translate agent response from English to target language."""
+    if target_lang == "en":
+        return text
+    lang_name = {"hi": "Hindi", "gu": "Gujarati"}[target_lang]
+    r = llm.invoke(
+        f"Translate this English text to {lang_name}.\n"
+        f"Keep unchanged: scheme names, official links, SC/ST/OBC/EWS/SEBC, state names, ₹ amounts, numbers.\n"
+        f"Return ONLY the {lang_name} translation.\n\nEnglish: {text}\n\n{lang_name}:"
+    )
+    return r.content.strip()
+
+def get_string(key: str, lang: str) -> str:
+    """Get a static UI string in the given language."""
+    return LANG_STRINGS.get(lang, LANG_STRINGS["en"]).get(key, LANG_STRINGS["en"].get(key, ""))
+
+# -------------------------------------------------
 # Schemas
 # -------------------------------------------------
 
@@ -65,10 +135,11 @@ def get_session(session_id: str) -> dict:
     if session_id not in store:
         store[session_id] = {
             "history": [],
-            "last_schemes": [],       # List[SchemeOutput] — last shown schemes
+            "last_schemes": [],
             "last_limit": None,
-            "user_profile": None,     # UserProfile — cached after first provided
-            "awaiting_profile": False, # True = we asked user for profile, waiting for reply
+            "user_profile": None,
+            "awaiting_profile": False,
+            "lang": "en",              # detected language for this session
         }
     return store[session_id]
 
@@ -828,12 +899,18 @@ Return ONLY this JSON array (no markdown, no extra text):
 # Conversational reply
 # -------------------------------------------------
 
-def conversational_reply(question: str, chat_history: list) -> str:
+def conversational_reply(question: str, chat_history: list, lang: str = "en") -> str:
     history_text = "\n".join([
         f"{'User' if isinstance(m, HumanMessage) else 'AI'}: {m.content}"
         for m in chat_history[-6:]
     ])
+    lang_instruction = {
+        "hi": "Always reply in Hindi (Devanagari script).",
+        "gu": "Always reply in Gujarati (Gujarati script).",
+        "en": "Reply in English.",
+    }.get(lang, "Reply in English.")
     r = llm.invoke(f"""You are a helpful Indian government scheme assistant.
+{lang_instruction}
 Help users find schemes and check eligibility.
 
 Conversation:
@@ -844,22 +921,6 @@ AI:""")
     return r.content.strip()
 
 # -------------------------------------------------
-# Profile request message
-# -------------------------------------------------
-
-PROFILE_REQUEST = """Sure! Please share your details so I can check eligibility:
-
-  • Age
-  • Annual Income  (e.g. 1.5 lakh, 50,000)
-  • Occupation     (e.g. student, farmer, self-employed)
-  • State          (e.g. Gujarat)
-  • Gender         (optional)
-  • Caste/Category (SC / ST / OBC / General / EWS / SEBC / NT / DNT / Minority)
-
-Example:
-  age: 22, income: 1.5 lakh, occupation: student, state: Gujarat, caste: OBC, Gender: Male"""
-
-# -------------------------------------------------
 # Main ask function
 # -------------------------------------------------
 
@@ -868,127 +929,132 @@ def ask_agent(question: str, session_id: str = "user_1"):
     chat_history = session["history"]
     awaiting_profile = session.get("awaiting_profile", False)
 
-    intent = detect_intent(question, chat_history, awaiting_profile)
+    # ── Language detection ───────────────────────────────────────────────────
+    lang = detect_language(question)
+    # Persist language — once user speaks Hindi/Gujarati keep it unless they switch
+    if lang != "en" or session.get("lang", "en") == "en":
+        session["lang"] = lang
+    lang = session["lang"]
+
+    # Translate question to English for all internal processing
+    question_en = translate_to_english(question, lang)
+
+    # Helper: translate a reply string back to user's language
+    def reply_in_lang(text: str) -> str:
+        return translate_response(text, lang)
+
+    # Shortcut to get localised static strings
+    def ls(key: str) -> str:
+        return get_string(key, lang)
+
+    PROFILE_REQUEST = ls("profile_request")
+
+    awaiting_profile = session.get("awaiting_profile", False)
+    intent = detect_intent(question_en, chat_history, awaiting_profile)
 
     # ── User provided their profile ─────────────────────────────────────────
     if intent == "eligibility_check":
-        profile = extract_user_profile(question)
-        # Also extract gender from natural language if LLM missed it
-        gender_hint = extract_gender_from_question(question)
+        profile = extract_user_profile(question_en)
+        gender_hint = extract_gender_from_question(question_en)
         profile = merge_gender_into_profile(profile, gender_hint)
         session["user_profile"] = profile
 
-        # Were we waiting to check SHOWN schemes specifically?
         if awaiting_profile and session.get("last_schemes"):
             session["awaiting_profile"] = False
-            print("🔍 Checking eligibility for shown schemes, please wait...")
+            print(ls("searching_shown") if "searching_shown" in LANG_STRINGS["en"] else "🔍 Checking...")
             results = check_eligibility_for_schemes(profile, session["last_schemes"])
             save_to_history(session_id, question, f"Checked eligibility for {len(session['last_schemes'])} schemes.")
-            return {"type": "eligibility_for_shown", "profile": profile.model_dump(), "schemes": results}
+            return {"type": "eligibility_for_shown", "profile": profile.model_dump(), "schemes": results, "lang": lang}
 
-        # General eligibility → search full DB
         session["awaiting_profile"] = False
-        print("🔍 Checking eligibility across all schemes, please wait...")
+        print("🔍 Checking eligibility across all schemes...")
         eligible = fetch_eligible_schemes(profile, k=10)
 
         if not eligible:
-            reply = "No matching schemes found. Try providing more details like age, income, occupation, state, and caste/category."
+            reply = reply_in_lang(ls("no_schemes_found"))
             save_to_history(session_id, question, reply)
-            return {"type": "conversational", "reply": reply}
+            return {"type": "conversational", "reply": reply, "lang": lang}
 
         save_to_history(session_id, question, f"Found {len(eligible)} eligible schemes.")
-        # Store eligible schemes in last_schemes so user can say "give me detail of 3rd"
-        session["last_schemes"] = eligible   # list of dicts — resolve_scheme_reference handles both
-        return {"type": "eligibility_result", "profile": profile.model_dump(), "schemes": eligible}
+        session["last_schemes"] = eligible
+        return {"type": "eligibility_result", "profile": profile.model_dump(), "schemes": eligible, "lang": lang}
 
     # ── User asks eligibility for previously shown schemes ───────────────────
     if intent == "eligibility_for_shown":
         last_schemes = session.get("last_schemes", [])
+        gender_hint = extract_gender_from_question(question_en)
 
-        # Always extract gender hint from the question itself
-        gender_hint = extract_gender_from_question(question)
-
-        # If user wants NEW/DIFFERENT schemes they are eligible for → full DB search
-        if is_fresh_search_request(question):
+        if is_fresh_search_request(question_en):
             if not session.get("user_profile"):
                 session["awaiting_profile"] = True
                 save_to_history(session_id, question, PROFILE_REQUEST)
-                return {"type": "conversational", "reply": PROFILE_REQUEST}
+                return {"type": "conversational", "reply": PROFILE_REQUEST, "lang": lang}
             profile = merge_gender_into_profile(session["user_profile"], gender_hint)
-            # Persist updated profile back to session
             session["user_profile"] = profile
-            print("🔍 Searching all schemes for your eligibility, please wait...")
+            print("🔍 Searching all schemes for your eligibility...")
             eligible = fetch_eligible_schemes(profile, k=10)
             if not eligible:
-                reply = "No additional matching schemes found for your profile."
+                reply = reply_in_lang(ls("no_additional_schemes"))
                 save_to_history(session_id, question, reply)
-                return {"type": "conversational", "reply": reply}
+                return {"type": "conversational", "reply": reply, "lang": lang}
             save_to_history(session_id, question, f"Found {len(eligible)} eligible schemes.")
-            # Store so user can pick by number/name
             session["last_schemes"] = eligible
-            return {"type": "eligibility_result", "profile": profile.model_dump(), "schemes": eligible}
+            return {"type": "eligibility_result", "profile": profile.model_dump(), "schemes": eligible, "lang": lang}
 
         if not last_schemes:
-            reply = "Please first ask for some schemes, then I can check your eligibility for them."
+            reply = reply_in_lang(ls("ask_schemes_first"))
             save_to_history(session_id, question, reply)
-            return {"type": "conversational", "reply": reply}
+            return {"type": "conversational", "reply": reply, "lang": lang}
 
-        # Already have profile cached → merge gender and check immediately
         if session.get("user_profile"):
             profile = merge_gender_into_profile(session["user_profile"], gender_hint)
             session["user_profile"] = profile
-            print("🔍 Checking eligibility for shown schemes, please wait...")
+            print("🔍 Checking eligibility for shown schemes...")
             results = check_eligibility_for_schemes(profile, last_schemes)
             save_to_history(session_id, question, f"Checked eligibility for {len(last_schemes)} schemes.")
-            return {"type": "eligibility_for_shown", "profile": profile.model_dump(), "schemes": results}
+            return {"type": "eligibility_for_shown", "profile": profile.model_dump(), "schemes": results, "lang": lang}
 
-        # No profile yet → ask for it; if gender hint found, pre-fill it
         if gender_hint:
             session["user_profile"] = UserProfile(gender=gender_hint)
         session["awaiting_profile"] = True
         save_to_history(session_id, question, PROFILE_REQUEST)
-        return {"type": "conversational", "reply": PROFILE_REQUEST}
+        return {"type": "conversational", "reply": PROFILE_REQUEST, "lang": lang}
 
     # ── Normal scheme queries ────────────────────────────────────────────────
     session["awaiting_profile"] = False
-    limit = parse_limit(question)
-    followup = is_followup_on_previous(question, chat_history, session["last_schemes"])
-    fresh = is_fresh_search_request(question)
+    limit = parse_limit(question_en)
+    followup = is_followup_on_previous(question_en, chat_history, session["last_schemes"])
+    fresh = is_fresh_search_request(question_en)
 
     if followup and not fresh and session["last_schemes"]:
-        schemes = resolve_scheme_reference(question, session["last_schemes"])
-        # If schemes came back as dicts (from eligibility results), convert to SchemeOutput
+        schemes = resolve_scheme_reference(question_en, session["last_schemes"])
         converted = []
         for s in schemes:
             if isinstance(s, dict):
-                # Fetch full details from vector DB for this scheme name
-                fetched = fetch_schemes(s.get("scheme_name",""), [], k=3, last_schemes=[])
+                fetched = fetch_schemes(s.get("scheme_name", ""), [], k=3, last_schemes=[])
                 if fetched:
                     converted.append(fetched[0])
                 else:
-                    # Fallback: wrap dict into a minimal SchemeOutput
                     converted.append(SchemeOutput(
-                        scheme_name=s.get("scheme_name",""),
-                        description="", category=s.get("category",""),
+                        scheme_name=s.get("scheme_name", ""),
+                        description="", category=s.get("category", ""),
                         benefits="", eligibility="",
                         documents_required="", application_process="",
-                        state=s.get("state",""),
-                        official_link=s.get("official_link","")
+                        state=s.get("state", ""),
+                        official_link=s.get("official_link", "")
                     ))
             else:
                 converted.append(s)
         schemes = converted
     else:
-        # Fresh search — exclude previously shown scheme names so results are new
         prev_names = []
         if fresh:
             for s in session["last_schemes"]:
-                name = s.scheme_name if hasattr(s, "scheme_name") else s.get("scheme_name","")
+                name = s.scheme_name if hasattr(s, "scheme_name") else s.get("scheme_name", "")
                 if name:
                     prev_names.append(name)
         fetch_k = max(limit or 3, 5) + len(prev_names)
-        schemes = fetch_schemes(question, chat_history, k=fetch_k, last_schemes=session["last_schemes"])
-        # Filter out previously shown schemes if user wants new ones
+        schemes = fetch_schemes(question_en, chat_history, k=fetch_k, last_schemes=session["last_schemes"])
         if fresh and prev_names:
             schemes = [s for s in schemes if s.scheme_name not in prev_names]
         session["last_schemes"] = schemes
@@ -996,24 +1062,31 @@ def ask_agent(question: str, session_id: str = "user_1"):
 
     if intent == "names_only":
         selected = schemes[:limit] if limit else schemes
-        reply = "\n".join(f"{i+1}. {s.scheme_name}" for i, s in enumerate(selected))
+        names_text = "\n".join(f"{i+1}. {s.scheme_name}" for i, s in enumerate(selected))
+        reply = reply_in_lang(names_text)
         save_to_history(session_id, question, reply)
-        return {"type": "names_only", "reply": reply}
+        return {"type": "names_only", "reply": reply, "lang": lang}
 
     if intent == "specific_field":
-        field = detect_field(question)
-        lines = [f"• {s.scheme_name}:\n  {apply_visit_site_fallback(s.model_dump()).get(field,'Not Available')}"
+        field = detect_field(question_en)
+        lines = [f"• {s.scheme_name}:\n  {apply_visit_site_fallback(s.model_dump()).get(field, 'Not Available')}"
                  for s in schemes]
-        reply = "\n\n".join(lines)
+        reply_en = "\n\n".join(lines)
+        reply = reply_in_lang(reply_en)
         save_to_history(session_id, question, reply)
-        return {"type": "specific_field", "field": field, "reply": reply}
+        return {"type": "specific_field", "field": field, "reply": reply, "lang": lang}
 
     if intent == "conversational":
-        reply = conversational_reply(question, chat_history)
+        reply = conversational_reply(question, chat_history, lang)
         save_to_history(session_id, question, reply)
-        return {"type": "conversational", "reply": reply}
+        return {"type": "conversational", "reply": reply, "lang": lang}
 
-    # full_detail
+    # full_detail — scheme card fields stay in English (original DB language)
+    # but we add lang so UI can label fields in the right language
     selected = schemes[:limit] if limit else schemes
     save_to_history(session_id, question, f"Showed details for: {', '.join(s.scheme_name for s in selected)}")
-    return {"type": "full_detail", "schemes": [apply_visit_site_fallback(s.model_dump()) for s in selected]}
+    return {
+        "type": "full_detail",
+        "schemes": [apply_visit_site_fallback(s.model_dump()) for s in selected],
+        "lang": lang,
+    }
