@@ -1,12 +1,7 @@
+from dotenv import load_dotenv
 import warnings
 warnings.filterwarnings("ignore")
-try:
-    from dotenv import load_dotenv  # type: ignore
-
-    load_dotenv()
-except ModuleNotFoundError:
-    # Allow running without python-dotenv; env vars can still be set normally.
-    pass
+load_dotenv()
 
 from langchain_chroma import Chroma
 from langchain_huggingface import HuggingFaceEmbeddings
