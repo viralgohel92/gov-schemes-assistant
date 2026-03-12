@@ -1,42 +1,74 @@
-from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse, JSONResponse
-from fastapi.templating import Jinja2Templates
-from fastapi.staticfiles import StaticFiles
-import uuid, os, sys
+from flask import Flask, render_template, request, jsonify, session
+import warnings
+import uuid
+import os
+import sys
 
-# Add parent folder so rag/agent.py can be imported
-REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
-sys.path.insert(0, REPO_ROOT)
+warnings.filterwarnings("ignore")
+try:
+    from dotenv import load_dotenv  # type: ignore
 
-from rag.agent import ask_agent
+    load_dotenv()
+except ModuleNotFoundError:
+    # Allow running without python-dotenv; env vars can still be set normally.
+    pass
 
-app = FastAPI()
-templates = Jinja2Templates(directory="templates")
+# Ensure repo root is on PYTHONPATH so `rag/` imports work
+REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if REPO_ROOT not in sys.path:
+    sys.path.insert(0, REPO_ROOT)
 
-@app.get("/", response_class=HTMLResponse)
-async def index(request: Request):
-    return templates.TemplateResponse("index.html", {"request": request})
+app = Flask(__name__)
+app.secret_key = "your-secret-key-change-this"  # Change this in production
 
-@app.post("/ask")
-async def ask(request: Request):
-    body = await request.json()
-    question = body.get("question", "").strip()
-    session_id = body.get("session_id", "default")
+
+@app.route("/")
+def index():
+    if "session_id" not in session:
+        session["session_id"] = str(uuid.uuid4())
+    return render_template("index.html")
+
+
+@app.route("/ask", methods=["POST"])
+def ask():
+    data = request.get_json()
+    question = data.get("question", "").strip()
 
     if not question:
-        return JSONResponse({"error": "Empty question"}, status_code=400)
+        return jsonify({"error": "Empty question"}), 400
+
+    session_id = session.get("session_id", "default_user")
 
     try:
-        result = ask_agent(question, session_id=session_id)
-        return JSONResponse(result)
-    except Exception as e:
-        return JSONResponse({"error": str(e)}, status_code=500)
+        try:
+            # Import lazily so the web UI can start even if
+            # the heavy RAG dependencies aren't installed yet.
+            from rag.agent import ask_agent  # type: ignore
+        except ModuleNotFoundError as e:
+            missing = getattr(e, "name", None) or str(e)
+            return (
+                jsonify(
+                    {
+                        "error": (
+                            f"Missing Python dependency: {missing}. "
+                            "Install the agent requirements and restart the server."
+                        )
+                    }
+                ),
+                500,
+            )
 
-@app.post("/reset")
-async def reset(request: Request):
-    # Return a fresh session_id — frontend stores it and sends it with future requests
-    return JSONResponse({"new_session_id": str(uuid.uuid4())})
+        result = ask_agent(question, session_id=session_id)
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/reset", methods=["POST"])
+def reset():
+    session["session_id"] = str(uuid.uuid4())
+    return jsonify({"status": "ok"})
+
 
 if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run("app:app", host="0.0.0.0", port=8000, reload=True)
+    app.run(debug=True, port=5000)
