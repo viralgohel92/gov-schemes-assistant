@@ -395,6 +395,23 @@ def is_direct_scheme_name_query(question: str) -> bool:
     return False
 
 def detect_intent(question: str, chat_history: list, awaiting_profile: bool) -> str:
+    q = question.lower().strip()
+
+    # ── PRIORITY 1: Greeting (before everything else) ─────────────────────────
+    greeting_words = ["hello", "hi", "hey", "namaste", "namaskar", "kem cho",
+                      "good morning", "good afternoon", "good evening", "greetings",
+                      "helo", "hii", "haai", "jai shri krishna", "jai jinendra"]
+    if any(g in q for g in greeting_words) and len(q.split()) <= 6:
+        return "greeting"
+
+    # ── PRIORITY 2: Scheme count question (before everything else) ────────────
+    count_hints = ["how many scheme", "total scheme", "number of scheme",
+                   "kitni yojana", "ketli yojana", "how many yojana",
+                   "count of scheme", "total yojana", "how many government scheme",
+                   "kitne scheme", "scheme count", "schemes are there"]
+    if any(h in q for h in count_hints):
+        return "scheme_count"
+
     if is_direct_scheme_name_query(question):
         return "full_detail"
 
@@ -1109,7 +1126,35 @@ def fetch_eligible_schemes(profile: UserProfile, k: int = 10) -> List[dict]:
 # Conversational reply
 # -------------------------------------------------
 
-def conversational_reply(question: str, chat_history: list, lang: str = "en") -> str:
+def get_total_scheme_count() -> int:
+    """Count total schemes stored in ChromaDB."""
+    try:
+        return get_vector_db()._collection.count()
+    except Exception:
+        return 0
+
+
+def conversational_reply(question: str, chat_history: list, lang: str = "en", intent: str = "conversational") -> str:
+    # ── Greeting ──────────────────────────────────────────────────────────────
+    if intent == "greeting":
+        greetings = {
+            "en": "Hello! 👋 Welcome to Yojana AI — your Gujarat Government Scheme Assistant.\nI can help you find schemes, check eligibility, and get application details. How can I help you today?",
+            "hi": "नमस्ते! 👋 योजना AI में आपका स्वागत है।\nमैं आपको सरकारी योजनाएं खोजने, पात्रता जाँचने और आवेदन प्रक्रिया जानने में मदद कर सकता हूँ। आज मैं आपकी कैसे मदद करूँ?",
+            "gu": "નમસ્તે! 👋 યોજना AI માં આपनું સ્વાગत छे.\nहुं आपने सरकारी योजनाओ शोधवा, पात्रता चकासवा अने अरजी प्रक्रिया जाणवामां मदद करी शकुं छुं. आज हुं आपनी केवी रीते मदद करी शकुं?",
+        }
+        return greetings.get(lang, greetings["en"])
+
+    # ── Scheme count ──────────────────────────────────────────────────────────
+    if intent == "scheme_count":
+        count = get_total_scheme_count()
+        counts = {
+            "en": f"There are currently **{count} government schemes** available in our Gujarat scheme database. You can ask me to find schemes by category, occupation, or check which ones you're eligible for!",
+            "hi": f"हमारे गुजरात योजना डेटाबेस में वर्तमान में **{count} सरकारी योजनाएं** उपलब्ध हैं। आप मुझसे श्रेणी, पेशे के अनुसार योजनाएं खोजने या पात्रता जाँचने के लिए कह सकते हैं!",
+            "gu": f"અमारा ગુजরात योजना डेटाबेस में अभी **{count} सरकारी योजनाएं** छे. आप मने श्रेणी के पेशा मुजब योजनाओ शोधवा के पात्रता चकासवा कही शको छो!",
+        }
+        return counts.get(lang, counts["en"])
+
+    # ── General conversational ────────────────────────────────────────────────
     history_text = "\n".join([
         f"{'User' if isinstance(m, HumanMessage) else 'AI'}: {m.content}"
         for m in chat_history[-6:]
@@ -1355,8 +1400,8 @@ def ask_agent(question: str, session_id: str = "user_1", ui_lang: str = None):
         save_to_history(session_id, question, reply)
         return {"type": "specific_field", "field": field, "reply": reply, "lang": lang}
 
-    if intent == "conversational":
-        reply = conversational_reply(question, chat_history, lang)
+    if intent in ("conversational", "greeting", "scheme_count"):
+        reply = conversational_reply(question, chat_history, lang, intent=intent)
         save_to_history(session_id, question, reply)
         return {"type": "conversational", "reply": reply, "lang": lang}
 

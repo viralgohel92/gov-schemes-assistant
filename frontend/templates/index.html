@@ -9,62 +9,6 @@
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-    /* ── Formatted Steps (Application Process) ── */
-    .formatted-steps {
-      list-style: none;
-      padding: 0;
-      margin: 6px 0 0 0;
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-    }
-    .formatted-steps li {
-      display: flex;
-      gap: 10px;
-      align-items: flex-start;
-      font-size: 13px;
-      line-height: 1.55;
-      color: var(--text);
-    }
-    .step-num {
-      flex-shrink: 0;
-      background: var(--navy);
-      color: white;
-      font-size: 10px;
-      font-weight: 700;
-      font-family: 'Rajdhani', sans-serif;
-      letter-spacing: 0.5px;
-      padding: 2px 7px;
-      border-radius: 4px;
-      margin-top: 1px;
-      white-space: nowrap;
-    }
-
-    /* ── Formatted List (Documents, Benefits, Eligibility) ── */
-    .formatted-list {
-      list-style: none;
-      padding: 0;
-      margin: 6px 0 0 0;
-      display: flex;
-      flex-direction: column;
-      gap: 5px;
-    }
-    .formatted-list li {
-      display: flex;
-      align-items: flex-start;
-      gap: 8px;
-      font-size: 13px;
-      line-height: 1.5;
-      color: var(--text);
-    }
-    .formatted-list li::before {
-      content: '▸';
-      color: var(--saffron);
-      flex-shrink: 0;
-      font-size: 11px;
-      margin-top: 2px;
-    }
-
     :root {
       --saffron: #FF9933;
       --deep-saffron: #e07000;
@@ -186,6 +130,7 @@
       border-bottom: 1px solid var(--border);
       padding: 8px 20px;
       display: flex;
+      justify-content: center;
       gap: 8px;
       overflow-x: auto;
       flex-shrink: 0;
@@ -682,85 +627,6 @@ function renderResult(result) {
   scrollBottom();
 }
 
-/**
- * Splits a wall-of-text into clean numbered steps.
- * Handles patterns like:
- *   "Step 01: ... Step 02: ..."
- *   "Step 1 - ... Step 2 - ..."
- *   "1. ... 2. ..."
- * Falls back to bullet-splitting on ". " for plain sentences.
- */
-function formatSteps(text) {
-  if (!text || ['not available','n/a','none',''].includes(text.trim().toLowerCase())) {
-    return `<span style="color:var(--muted)">Not available</span>`;
-  }
-
-  // Pattern 1: "Step 01:" / "Step 1:" / "Step 1 -" / "STEP 1."
-  const stepPattern = /step\s*\d+\s*[:\-\.]/gi;
-  if (stepPattern.test(text)) {
-    const parts = text.split(/(?=step\s*\d+\s*[:\-\.])/gi).map(s => s.trim()).filter(Boolean);
-    if (parts.length > 1) {
-      return `<ol class="formatted-steps">${parts.map(p => {
-        // Remove the "Step N:" prefix from the text inside the <li>
-        const body = p.replace(/^step\s*\d+\s*[:\-\.]\s*/i, '').trim();
-        const stepNum = (p.match(/\d+/) || [''])[0];
-        return `<li><span class="step-num">Step ${stepNum}</span>${escapeHtml(body)}</li>`;
-      }).join('')}</ol>`;
-    }
-  }
-
-  // Pattern 2: "1. text 2. text" numbered list
-  const numberedPattern = /(?:^|\s)(\d+)\.\s/g;
-  const numberedMatches = [...text.matchAll(numberedPattern)];
-  if (numberedMatches.length > 1) {
-    const parts = text.split(/(?=(?:^|\s)\d+\.\s)/).map(s => s.trim()).filter(Boolean);
-    return `<ol class="formatted-steps">${parts.map(p => {
-      const body = p.replace(/^\d+\.\s*/, '').trim();
-      const num = (p.match(/^\d+/) || [''])[0];
-      return `<li><span class="step-num">Step ${num}</span>${escapeHtml(body)}</li>`;
-    }).join('')}</ol>`;
-  }
-
-  // Pattern 3: Bullet-style — split on ". " where next word is capitalised
-  const sentences = text.split(/\.\s+(?=[A-Z])/).map(s => s.trim()).filter(s => s.length > 10);
-  if (sentences.length > 2) {
-    return `<ol class="formatted-steps">${sentences.map((s, i) =>
-      `<li><span class="step-num">Step ${i + 1}</span>${escapeHtml(s.replace(/\.$/, ''))}</li>`
-    ).join('')}</ol>`;
-  }
-
-  // Fallback: plain text
-  return `<span class="field-value">${escapeHtml(text)}</span>`;
-}
-
-/**
- * Formats comma/semicolon/newline-separated lists (e.g. Documents Required)
- * into a clean bullet list.
- */
-function formatList(text) {
-  if (!text || ['not available','n/a','none',''].includes(text.trim().toLowerCase())) {
-    return `<span style="color:var(--muted)">Not available</span>`;
-  }
-  // Already has step pattern → use formatSteps
-  if (/step\s*\d+/i.test(text)) return formatSteps(text);
-
-  // Split on newline, semicolon, or ". " boundary
-  let items = text.split(/\n|;\s*|(?<=\.)\s+(?=[A-Z•\-])/).map(s => s.trim()).filter(s => s.length > 3);
-
-  // If still one big blob, try splitting on ","
-  if (items.length <= 1) {
-    items = text.split(/,\s+/).map(s => s.trim()).filter(s => s.length > 3);
-  }
-
-  if (items.length > 1) {
-    return `<ul class="formatted-list">${items.map(item =>
-      `<li>${escapeHtml(item.replace(/^[•\-]\s*/, ''))}</li>`
-    ).join('')}</ul>`;
-  }
-
-  return `<span class="field-value">${escapeHtml(text)}</span>`;
-}
-
 function buildSchemeCard(s, i) {
   const link = s.official_link && !['not available','n/a','none',''].includes(s.official_link.toLowerCase())
     ? `<a href="${escapeHtml(s.official_link)}" target="_blank" class="link-value">🔗 Visit Official Site ↗</a>`
@@ -785,19 +651,19 @@ function buildSchemeCard(s, i) {
       </div>
       <div class="scheme-field">
         <span class="field-label">Benefits</span>
-        <div class="field-value">${formatList(s.benefits)}</div>
+        <span class="field-value">${escapeHtml(s.benefits || 'Not available')}</span>
       </div>
       <div class="scheme-field">
         <span class="field-label">Eligibility</span>
-        <div class="field-value">${formatList(s.eligibility)}</div>
+        <span class="field-value">${escapeHtml(s.eligibility || 'Not available')}</span>
       </div>
       <div class="scheme-field">
         <span class="field-label">Documents Required</span>
-        <div class="field-value">${formatList(s.documents_required)}</div>
+        <span class="field-value">${escapeHtml(s.documents_required || 'Not available')}</span>
       </div>
-      <div class="scheme-field full">
-        <span class="field-label">📋 Application Process</span>
-        <div class="field-value">${formatSteps(s.application_process)}</div>
+      <div class="scheme-field">
+        <span class="field-label">Application Process</span>
+        <span class="field-value">${escapeHtml(s.application_process || 'Not available')}</span>
       </div>
       <div class="divider"></div>
       <div class="scheme-field full">
