@@ -422,6 +422,105 @@
     .chat-container::-webkit-scrollbar { width: 6px; }
     .chat-container::-webkit-scrollbar-track { background: transparent; }
     .chat-container::-webkit-scrollbar-thumb { background: #d0c8b8; border-radius: 3px; }
+
+
+    /* ── Auto-Read Toggle in Header ── */
+    .auto-read-toggle {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      background: rgba(255,255,255,0.12);
+      border: 1px solid rgba(255,255,255,0.25);
+      border-radius: 20px;
+      padding: 5px 12px 5px 8px;
+      cursor: pointer;
+      transition: all 0.2s;
+      user-select: none;
+    }
+    .auto-read-toggle:hover { background: rgba(255,255,255,0.22); }
+    .auto-read-toggle.on { background: rgba(255,153,51,0.25); border-color: var(--saffron); }
+    .toggle-track {
+      position: relative;
+      width: 30px;
+      height: 17px;
+      background: rgba(255,255,255,0.3);
+      border-radius: 9px;
+      transition: background 0.25s;
+      flex-shrink: 0;
+    }
+    .auto-read-toggle.on .toggle-track { background: var(--saffron); }
+    .toggle-knob {
+      position: absolute;
+      top: 2px; left: 2px;
+      width: 13px; height: 13px;
+      background: white;
+      border-radius: 50%;
+      transition: transform 0.25s;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+    }
+    .auto-read-toggle.on .toggle-knob { transform: translateX(13px); }
+    .auto-read-label {
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+      color: white;
+    }
+    /* ── Mic Button ── */
+    .mic-btn {
+      background: var(--cream);
+      border: 1.5px solid var(--border);
+      border-radius: 12px;
+      width: 46px;
+      height: 46px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      flex-shrink: 0;
+      transition: all 0.2s;
+      font-size: 18px;
+    }
+    .mic-btn:hover { background: #ffe8cc; border-color: var(--saffron); }
+    .mic-btn.listening {
+      background: #fff0f0;
+      border-color: #e53e3e;
+      animation: mic-pulse 1.2s ease-in-out infinite;
+    }
+    @keyframes mic-pulse {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(229,62,62,0.3); }
+      50%       { box-shadow: 0 0 0 6px rgba(229,62,62,0); }
+    }
+
+
+    /* ── Word highlight during TTS ── */
+    .tts-word {
+      border-radius: 3px;
+      transition: background 0.1s, color 0.1s;
+    }
+    .tts-word.active {
+      background: var(--saffron);
+      color: #fff;
+      border-radius: 3px;
+      padding: 0 1px;
+    }
+    /* ── TTS speak button on AI bubbles ── */
+    .speak-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      margin-top: 8px;
+      background: none;
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 3px 10px;
+      font-size: 11px;
+      color: var(--muted);
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .speak-btn:hover { border-color: var(--navy); color: var(--navy); }
+    .speak-btn.speaking { color: var(--green); border-color: var(--green); }
   </style>
 </head>
 <body>
@@ -435,6 +534,11 @@
     </div>
   </div>
   <div class="header-actions">
+    <div class="auto-read-toggle" id="auto-read-btn" onclick="toggleAutoRead()" title="Auto-read AI replies aloud">
+      <span style="font-size:14px">🔊</span>
+      <div class="toggle-track"><div class="toggle-knob"></div></div>
+      <span class="auto-read-label">Auto-Read</span>
+    </div>
     <div class="lang-selector">
       <button class="lang-btn active" data-lang="en" onclick="setLang('en')">EN</button>
       <button class="lang-btn" data-lang="hi" onclick="setLang('hi')">हिं</button>
@@ -466,15 +570,152 @@
 <div class="input-area">
   <div class="input-row">
     <textarea id="question-input" rows="1" placeholder="Ask about any government scheme…" onkeydown="handleKey(event)" oninput="autoResize(this)"></textarea>
+    <button class="mic-btn" id="mic-btn" onclick="toggleVoice()" title="Voice input (click to speak)">🎙️</button>
     <button class="send-btn" id="send-btn" onclick="sendMessage()">➤</button>
   </div>
-  <p class="input-hint">Press Enter to send · Shift+Enter for new line</p>
+  <p class="input-hint" id="input-hint">Press Enter to send · Shift+Enter for new line</p>
 </div>
 
 <script>
 const chat = document.getElementById('chat');
 const input = document.getElementById('question-input');
 const sendBtn = document.getElementById('send-btn');
+const micBtn = document.getElementById('mic-btn');
+const inputHint = document.getElementById('input-hint');
+
+// ── Voice Input (Speech-to-Text) ─────────────────────────────────────────────
+let recognition = null;
+let isListening = false;
+
+const VOICE_LANG = { en: 'en-IN', hi: 'hi-IN', gu: 'gu-IN' };
+const VOICE_HINT = {
+  en: { idle: 'Press Enter to send · Shift+Enter for new line', listening: '🎙️ Listening… speak your question' },
+  hi: { idle: 'Enter दबाएं भेजने के लिए · Shift+Enter नई लाइन के लिए', listening: '🎙️ सुन रहा हूं… बोलिए' },
+  gu: { idle: 'Enter દબાવો મોકલવા માટે · Shift+Enter નવી લીટી માટે', listening: '🎙️ સાંભળું છું… બોલો' },
+};
+
+function toggleVoice() {
+  if (!('webkitSpeechRecognition' in window || 'SpeechRecognition' in window)) {
+    alert('Voice input is not supported in this browser.\nPlease use Google Chrome or Microsoft Edge.');
+    return;
+  }
+  if (isListening) { recognition && recognition.stop(); return; }
+
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  recognition = new SR();
+  recognition.lang = VOICE_LANG[currentLang] || 'en-IN';
+  recognition.interimResults = true;
+  recognition.continuous = true;
+  recognition.maxAlternatives = 1;
+
+  let silenceTimer = null;
+  const resetSilence = () => {
+    clearTimeout(silenceTimer);
+    silenceTimer = setTimeout(() => { recognition && recognition.stop(); }, 5000);
+  };
+
+  recognition.onstart = () => {
+    isListening = true;
+    micBtn.textContent = '🔴';
+    micBtn.classList.add('listening');
+    micBtn.title = 'Listening… click to stop';
+    input.placeholder = VOICE_HINT[currentLang]?.listening || '🎙️ Listening…';
+    inputHint.textContent = VOICE_HINT[currentLang]?.listening || '🎙️ Listening…';
+    input.value = '';
+  };
+
+  recognition.onresult = (event) => {
+    let interim = '', final = '';
+    for (let i = event.resultIndex; i < event.results.length; i++) {
+      const t = event.results[i][0].transcript;
+      event.results[i].isFinal ? (final += t) : (interim += t);
+    }
+    input.value = final || interim;
+    autoResize(input);
+    resetSilence();
+  };
+
+  recognition.onend = () => {
+    isListening = false;
+    micBtn.textContent = '🎙️';
+    micBtn.classList.remove('listening');
+    micBtn.title = 'Voice input (click to speak)';
+    const L = LANG_UI[currentLang];
+    input.placeholder = L.placeholder;
+    inputHint.textContent = L.hint;
+    if (input.value.trim()) input.focus();
+  };
+
+  recognition.onerror = (e) => {
+    isListening = false;
+    micBtn.textContent = '🎙️';
+    micBtn.classList.remove('listening');
+    micBtn.title = 'Voice input (click to speak)';
+    const L = LANG_UI[currentLang];
+    input.placeholder = L.placeholder;
+
+    // Silent errors — reset quietly, no alert
+    if (e.error === 'aborted' || e.error === 'no-speech') {
+      inputHint.textContent = L.hint;
+      return;
+    }
+
+    // Real errors — show inline in hint bar, not an intrusive alert
+    const msgs = {
+      'not-allowed': '🚫 Mic blocked — allow microphone access in browser settings.',
+      'network':     '⚠️ Network error during voice recognition. Check your connection.',
+    };
+    inputHint.textContent = msgs[e.error] || ('⚠️ Voice error: ' + e.error);
+    setTimeout(() => { inputHint.textContent = L.hint; }, 4000);
+  };
+
+  recognition.start();
+}
+
+// ── Text-to-Speech (AI reply read aloud) ─────────────────────────────────────
+let currentUtterance = null;
+let autoReadEnabled = false;
+
+function toggleAutoRead() {
+  autoReadEnabled = !autoReadEnabled;
+  const btn = document.getElementById('auto-read-btn');
+  btn.classList.toggle('on', autoReadEnabled);
+  // Stop any ongoing speech when turning off
+  if (!autoReadEnabled && window.speechSynthesis) {
+    speechSynthesis.cancel();
+    currentUtterance = null;
+    document.querySelectorAll('.speak-btn').forEach(b => {
+      b.textContent = '🔊 Listen'; b.classList.remove('speaking'); b.dataset.speaking = '0';
+    });
+  }
+}
+
+function speakText(text, btn) {
+  if (!window.speechSynthesis) return;
+  if (currentUtterance) {
+    speechSynthesis.cancel();
+    currentUtterance = null;
+    document.querySelectorAll('.speak-btn').forEach(b => {
+      b.textContent = '🔊 Listen'; b.classList.remove('speaking');
+    });
+    if (btn.dataset.speaking === '1') { btn.dataset.speaking = '0'; return; }
+  }
+  const utter = new SpeechSynthesisUtterance(text);
+  utter.lang = VOICE_LANG[currentLang] || 'en-IN';
+  utter.rate = 0.88;
+  utter.pitch = 1;
+  currentUtterance = utter;
+  btn.textContent = '⏹ Stop';
+  btn.classList.add('speaking');
+  btn.dataset.speaking = '1';
+  utter.onend = utter.onerror = () => {
+    currentUtterance = null;
+    btn.textContent = '🔊 Listen';
+    btn.classList.remove('speaking');
+    btn.dataset.speaking = '0';
+  };
+  speechSynthesis.speak(utter);
+}
 
 function autoResize(el) {
   el.style.height = 'auto';
@@ -533,7 +774,12 @@ function renderResult(result) {
   let content = '';
 
   if (result.type === 'conversational') {
-    content = `<div class="bubble ai">${escapeHtml(result.reply)}</div>`;
+    const replyText = result.reply || '';
+    const speakId = 'speak-' + Date.now();
+    content = `<div class="bubble ai">
+      ${escapeHtml(replyText)}
+      <br><button class="speak-btn" id="${speakId}" onclick="speakText(${JSON.stringify(replyText)}, this)" data-speaking="0">🔊 Listen</button>
+    </div>`;
   }
   else if (result.type === 'names_only') {
     content = `<div class="bubble ai">
@@ -625,6 +871,159 @@ function renderResult(result) {
   row.innerHTML = avatar + content;
   chat.appendChild(row);
   scrollBottom();
+
+  // Auto-read: fires for ALL response types when toggle is ON
+  if (autoReadEnabled) {
+    // Build the text to speak based on response type
+    let speakText = '';
+
+    if (result.type === 'conversational' && result.reply) {
+      speakText = result.reply;
+
+    } else if (result.type === 'names_only' && result.reply) {
+      speakText = 'Here are the schemes found. ' + result.reply;
+
+    } else if (result.type === 'specific_field' && result.reply) {
+      const fieldLabel = (result.field || '').replace(/_/g, ' ');
+      speakText = fieldLabel + '. ' + result.reply;
+
+    } else if (result.type === 'full_detail' && result.schemes?.length) {
+      speakText = result.schemes.map((s, i) =>
+        `Scheme ${i+1}: ${s.scheme_name || ''}. ` +
+        (s.description ? `Description: ${s.description}. ` : '') +
+        (s.benefits ? `Benefits: ${s.benefits}. ` : '') +
+        (s.eligibility ? `Eligibility: ${s.eligibility}.` : '')
+      ).join(' ');
+
+    } else if (result.type === 'eligibility_result' && result.schemes?.length) {
+      speakText = `Found ${result.schemes.length} eligible schemes. ` +
+        result.schemes.map((s, i) =>
+          `${i+1}: ${s.scheme_name || ''}. ${s.why_eligible || ''}`
+        ).join('. ');
+
+    } else if (result.type === 'eligibility_for_shown' && result.schemes?.length) {
+      const eligible = result.schemes.filter(s => s.is_eligible);
+      const notEligible = result.schemes.filter(s => !s.is_eligible);
+      speakText = `Eligibility check complete. ${eligible.length} eligible, ${notEligible.length} not eligible. ` +
+        result.schemes.map(s =>
+          `${s.scheme_name || ''}: ${s.is_eligible ? 'Eligible. ' : 'Not eligible. '}${s.reason || ''}`
+        ).join('. ');
+
+    } else if (result.error) {
+      speakText = 'Error: ' + result.error;
+    }
+
+    if (speakText) {
+      setTimeout(() => {
+        if (!window.speechSynthesis) return;
+        speechSynthesis.cancel();
+
+        // Wrap bubble words into spans FIRST, then build speakText FROM those spans
+        // This guarantees charIndex in onboundary aligns exactly with span positions
+        const bubble = row.querySelector('.bubble.ai') || row.querySelector('.bubble');
+        let wordSpans = [];
+        let alignedText = speakText; // fallback
+
+        if (bubble) {
+          wrapWordsInBubble(bubble);
+          wordSpans = Array.from(bubble.querySelectorAll('.tts-word'));
+          // Rebuild speak string directly from the spans so charIndex matches perfectly
+          if (wordSpans.length > 0) {
+            alignedText = wordSpans.map(s => s.textContent).join(' ');
+          }
+        }
+
+        const utter = new SpeechSynthesisUtterance(alignedText);
+        utter.lang = VOICE_LANG[currentLang] || 'en-IN';
+        utter.rate = 0.88;
+        utter.pitch = 1;
+        currentUtterance = utter;
+
+        const btn = row.querySelector('.speak-btn');
+        if (btn) { btn.textContent = '⏹ Stop'; btn.classList.add('speaking'); btn.dataset.speaking = '1'; }
+
+        // Build a char-offset map: for each span, record its start position in alignedText
+        const offsets = [];
+        let pos = 0;
+        wordSpans.forEach((span, i) => {
+          offsets[i] = pos;
+          pos += span.textContent.length + 1; // +1 for the space separator
+        });
+
+        let lastHighlighted = -1;
+        utter.onboundary = (e) => {
+          if (e.name !== 'word') return;
+          // Find the span whose offset is closest to e.charIndex
+          let best = -1, bestDiff = Infinity;
+          for (let i = 0; i < offsets.length; i++) {
+            const diff = Math.abs(offsets[i] - e.charIndex);
+            if (diff < bestDiff) { bestDiff = diff; best = i; }
+            if (offsets[i] > e.charIndex + (e.charLength || 10)) break;
+          }
+          if (best === -1 || best === lastHighlighted) return;
+          // Clear old, highlight new
+          if (lastHighlighted >= 0) wordSpans[lastHighlighted].classList.remove('active');
+          wordSpans[best].classList.add('active');
+          wordSpans[best].scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+          lastHighlighted = best;
+        };
+
+        utter.onend = utter.onerror = () => {
+          currentUtterance = null;
+          if (lastHighlighted >= 0 && wordSpans[lastHighlighted]) {
+            wordSpans[lastHighlighted].classList.remove('active');
+          }
+          unwrapWordsInBubble(bubble);
+          lastHighlighted = -1;
+          if (btn) { btn.textContent = '🔊 Listen'; btn.classList.remove('speaking'); btn.dataset.speaking = '0'; }
+        };
+
+        speechSynthesis.speak(utter);
+      }, 300);
+    }
+  }
+}
+
+
+// ── TTS word-wrap helpers ────────────────────────────────────────────────────
+function wrapWordsInBubble(el) {
+  // Only wrap text nodes that are direct or shallow children, skip buttons/links
+  const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, {
+    acceptNode(node) {
+      const p = node.parentElement;
+      if (!p) return NodeFilter.FILTER_REJECT;
+      if (['BUTTON','A','SCRIPT','STYLE'].includes(p.tagName)) return NodeFilter.FILTER_REJECT;
+      if (p.classList.contains('tts-word')) return NodeFilter.FILTER_REJECT;
+      if (node.textContent.trim() === '') return NodeFilter.FILTER_REJECT;
+      return NodeFilter.FILTER_ACCEPT;
+    }
+  });
+  const nodes = [];
+  while (walker.nextNode()) nodes.push(walker.currentNode);
+  nodes.forEach(node => {
+    const words = node.textContent.split(/(\s+)/);
+    const frag = document.createDocumentFragment();
+    words.forEach(part => {
+      if (/^\s+$/.test(part)) {
+        frag.appendChild(document.createTextNode(part));
+      } else if (part) {
+        const span = document.createElement('span');
+        span.className = 'tts-word';
+        span.textContent = part;
+        frag.appendChild(span);
+      }
+    });
+    node.parentNode.replaceChild(frag, node);
+  });
+}
+
+function unwrapWordsInBubble(el) {
+  if (!el) return;
+  el.querySelectorAll('.tts-word').forEach(span => {
+    span.replaceWith(document.createTextNode(span.textContent));
+  });
+  // Normalize merges adjacent text nodes
+  el.normalize();
 }
 
 function buildSchemeCard(s, i) {
@@ -746,6 +1145,7 @@ let currentLang = 'en';  // tracks which language button is active
 
 function setLang(lang) {
   currentLang = lang;
+  if (isListening && recognition) recognition.stop();
   // Update active button
   document.querySelectorAll('.lang-btn').forEach(b =>
     b.classList.toggle('active', b.dataset.lang === lang)
@@ -754,7 +1154,7 @@ function setLang(lang) {
   // Update input placeholder
   document.getElementById('question-input').placeholder = L.placeholder;
   // Update hint text
-  document.querySelector('.input-hint').textContent = L.hint;
+  document.getElementById('input-hint').textContent = L.hint;
   // Update suggestion chips
   const bar = document.getElementById('suggestions');
   bar.innerHTML = L.chips
