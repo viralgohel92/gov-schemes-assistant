@@ -70,8 +70,15 @@ def ask():
                 500,
             )
 
-        result = ask_agent(question, session_id=session_id, ui_lang=ui_lang)
-        return jsonify(result)
+        import json
+        def generate():
+            try:
+                for chunk in ask_agent(question, session_id=session_id, ui_lang=ui_lang):
+                    yield f"data: {json.dumps(chunk)}\n\n"
+            except Exception as e:
+                yield f"data: {json.dumps({'error': str(e)})}\n\n"
+        
+        return app.response_class(generate(), mimetype='text/event-stream')
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 

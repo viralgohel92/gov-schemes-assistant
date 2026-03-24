@@ -772,14 +772,16 @@ function renderResult(result) {
 
   const avatar = `<div class="avatar ai">🤖</div>`;
   let content = '';
+  let attachSpeak = null;
 
   if (result.type === 'conversational') {
     const replyText = result.reply || '';
     const speakId = 'speak-' + Date.now();
     content = `<div class="bubble ai">
       ${escapeHtml(replyText)}
-      <br><button class="speak-btn" id="${speakId}" onclick="speakText(${JSON.stringify(replyText)}, this)" data-speaking="0">🔊 Listen</button>
+      <br><button class="speak-btn" id="${speakId}" data-speaking="0">🔊 Listen</button>
     </div>`;
+    attachSpeak = { id: speakId, text: replyText };
   }
   else if (result.type === 'names_only') {
     content = `<div class="bubble ai">
@@ -871,6 +873,11 @@ function renderResult(result) {
   row.innerHTML = avatar + content;
   chat.appendChild(row);
   scrollBottom();
+
+  if (attachSpeak) {
+    const btn = row.querySelector('#' + attachSpeak.id);
+    if (btn) btn.onclick = () => speakText(attachSpeak.text, btn);
+  }
 
   // Auto-read: fires for ALL response types when toggle is ON
   if (autoReadEnabled) {
@@ -1089,9 +1096,94 @@ async function sendMessage() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ question: q, lang: currentLang })
     });
-    const data = await res.json();
-    removeTyping();
-    renderResult(data);
+    
+    if (!res.ok) {
+      removeTyping();
+      renderResult({ error: 'Network error. Please try again.' });
+      return;
+    }
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder("utf-8");
+    let buffer = '';
+    
+    let streamingRow = null;
+    let streamingBubble = null;
+    let fullText = '';
+    let schemesWrapper = null;
+
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      let lines = buffer.split('\n');
+      buffer = lines.pop(); // keep last partial line
+      
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          try {
+            const data = JSON.parse(line.substring(6));
+
+            if (data.type === 'conversational_start') {
+              removeTyping();
+              streamingRow = document.createElement('div');
+              streamingRow.className = 'msg-row ai';
+              streamingRow.innerHTML = `<div class="avatar ai">🤖</div><div class="bubble ai" id="streaming-bubble"></div>`;
+              chat.appendChild(streamingRow);
+              streamingBubble = streamingRow.querySelector('#streaming-bubble');
+              fullText = '';
+            } else if (data.type === 'chunk') {
+              fullText += data.text;
+              if (streamingBubble) {
+                streamingBubble.innerHTML = escapeHtml(fullText);
+                scrollBottom();
+              }
+            } else if (data.type === 'conversational_end') {
+              if (streamingRow) streamingRow.remove();
+              renderResult({ type: 'conversational', reply: fullText, lang: currentLang });
+            } else if (data.type === 'schemes_start') {
+              removeTyping();
+              const row = document.createElement('div');
+              row.className = 'msg-row ai';
+              row.innerHTML = `<div class="avatar ai">🤖</div><div class="schemes-wrapper" id="streaming-schemes"></div>`;
+              chat.appendChild(row);
+              schemesWrapper = row.querySelector('#streaming-schemes');
+            } else if (data.type === 'scheme_card') {
+              if (schemesWrapper) {
+                const cardHtml = buildSchemeCard(data.scheme, data.index);
+                const temp = document.createElement('div');
+                temp.innerHTML = cardHtml;
+                const card = temp.firstElementChild;
+                card.style.opacity = '0';
+                card.style.transform = 'translateY(12px)';
+                card.style.transition = 'opacity 0.3s ease, transform 0.3s ease';
+                schemesWrapper.appendChild(card);
+                // Trigger animation
+                requestAnimationFrame(() => {
+                  card.style.opacity = '1';
+                  card.style.transform = 'translateY(0)';
+                });
+                scrollBottom();
+              }
+            } else if (data.type === 'schemes_end') {
+              // Cards are already rendered, nothing else needed
+            } else if (data.type === 'convert_to_cards') {
+              // Option 1 Flow: Remove the typing text bubble and render final cards
+              if (streamingRow) {
+                streamingRow.remove();
+                streamingRow = null;
+                streamingBubble = null;
+              }
+              data.type = 'full_detail';  // map back to existing render logic
+              renderResult(data);
+            } else {
+              removeTyping();
+              renderResult(data);
+            }
+          } catch(e) {}
+        }
+      }
+    }
   } catch (err) {
     removeTyping();
     renderResult({ error: 'Network error. Please try again.' });

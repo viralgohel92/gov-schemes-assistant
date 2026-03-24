@@ -401,7 +401,8 @@ def detect_intent(question: str, chat_history: list, awaiting_profile: bool) -> 
     greeting_words = ["hello", "hi", "hey", "namaste", "namaskar", "kem cho",
                       "good morning", "good afternoon", "good evening", "greetings",
                       "helo", "hii", "haai", "jai shri krishna", "jai jinendra"]
-    if any(g in q for g in greeting_words) and len(q.split()) <= 6:
+    import re
+    if any(re.search(rf'\b{g}\b', q) for g in greeting_words) and len(q.split()) <= 6:
         return "greeting"
 
     # ── PRIORITY 2: Scheme count question (before everything else) ────────────
@@ -1134,7 +1135,7 @@ def get_total_scheme_count() -> int:
         return 0
 
 
-def conversational_reply(question: str, chat_history: list, lang: str = "en", intent: str = "conversational") -> str:
+def conversational_reply_stream(question: str, chat_history: list, lang: str = "en", intent: str = "conversational"):
     # ── Greeting ──────────────────────────────────────────────────────────────
     if intent == "greeting":
         greetings = {
@@ -1142,7 +1143,8 @@ def conversational_reply(question: str, chat_history: list, lang: str = "en", in
             "hi": "नमस्ते! 👋 योजना AI में आपका स्वागत है।\nमैं आपको सरकारी योजनाएं खोजने, पात्रता जाँचने और आवेदन प्रक्रिया जानने में मदद कर सकता हूँ। आज मैं आपकी कैसे मदद करूँ?",
             "gu": "નમસ્તે! 👋 યોજना AI માં આपनું સ્વાગत छे.\nहुं आपने सरकारी योजनाओ शोधवा, पात्रता चकासवा अने अरजी प्रक्रिया जाणवामां मदद करी शकुं छुं. आज हुं आपनी केवी रीते मदद करी शकुं?",
         }
-        return greetings.get(lang, greetings["en"])
+        yield greetings.get(lang, greetings["en"])
+        return
 
     # ── Scheme count ──────────────────────────────────────────────────────────
     if intent == "scheme_count":
@@ -1152,7 +1154,8 @@ def conversational_reply(question: str, chat_history: list, lang: str = "en", in
             "hi": f"हमारे गुजरात योजना डेटाबेस में वर्तमान में **{count} सरकारी योजनाएं** उपलब्ध हैं। आप मुझसे श्रेणी, पेशे के अनुसार योजनाएं खोजने या पात्रता जाँचने के लिए कह सकते हैं!",
             "gu": f"અमारा ગુजরात योजना डेटाबेस में अभी **{count} सरकारी योजनाएं** छे. आप मने श्रेणी के पेशा मुजब योजनाओ शोधवा के पात्रता चकासवा कही शको छो!",
         }
-        return counts.get(lang, counts["en"])
+        yield counts.get(lang, counts["en"])
+        return
 
     # ── General conversational ────────────────────────────────────────────────
     history_text = "\n".join([
@@ -1164,7 +1167,7 @@ def conversational_reply(question: str, chat_history: list, lang: str = "en", in
         "gu": "Always reply in Gujarati (Gujarati script).",
         "en": "Reply in English.",
     }.get(lang, "Reply in English.")
-    r = get_llm().invoke(f"""You are a helpful Gujarat government scheme assistant.
+    prompt = f"""You are a helpful Gujarat government scheme assistant.
 {lang_instruction}
 Help users find schemes and check eligibility.
 
@@ -1172,8 +1175,9 @@ Conversation:
 {history_text}
 
 User: {question}
-AI:""")
-    return r.content.strip()
+AI:"""
+    for chunk in get_llm().stream(prompt):
+        yield chunk.content
 
 # -------------------------------------------------
 # Main ask function
@@ -1249,7 +1253,8 @@ def ask_agent(question: str, session_id: str = "user_1", ui_lang: str = None):
                 print("🔍 Checking eligibility for shown schemes...")
                 results = check_eligibility_for_schemes(profile, scheme_objects)
                 save_to_history(session_id, question, f"Checked eligibility for {len(scheme_objects)} schemes.")
-                return {"type": "eligibility_for_shown", "profile": profile.model_dump(), "schemes": results, "lang": lang}
+                yield {"type": "eligibility_for_shown", "profile": profile.model_dump(), "schemes": results, "lang": lang}
+                return
 
         # No prior shown schemes OR scheme_objects came out empty → search full DB
         print("🔍 No prior schemes found — searching full DB for eligibility...")
@@ -1259,16 +1264,19 @@ def ask_agent(question: str, session_id: str = "user_1", ui_lang: str = None):
             print(f"[eligibility_check] fetch_eligible_schemes error: {e}")
             reply = reply_in_lang("Sorry, something went wrong while checking eligibility. Please try again.")
             save_to_history(session_id, question, reply)
-            return {"type": "conversational", "reply": reply, "lang": lang}
+            yield {"type": "conversational", "reply": reply, "lang": lang}
+            return
 
         if not eligible:
             reply = reply_in_lang(ls("no_schemes_found"))
             save_to_history(session_id, question, reply)
-            return {"type": "conversational", "reply": reply, "lang": lang}
+            yield {"type": "conversational", "reply": reply, "lang": lang}
+            return
 
         save_to_history(session_id, question, f"Found {len(eligible)} eligible schemes.")
         session["last_schemes"] = eligible
-        return {"type": "eligibility_result", "profile": profile.model_dump(), "schemes": eligible, "lang": lang}
+        yield {"type": "eligibility_result", "profile": profile.model_dump(), "schemes": eligible, "lang": lang}
+        return
 
     # ── User asks eligibility for previously shown schemes ───────────────────
     if intent == "eligibility_for_shown":
@@ -1286,15 +1294,17 @@ def ask_agent(question: str, session_id: str = "user_1", ui_lang: str = None):
                 dicts = [s.model_dump() for s in selected]
                 with ThreadPoolExecutor(max_workers=min(len(dicts), 5)) as ex:
                     enriched = list(ex.map(apply_visit_site_fallback, dicts))
-                return {
+                yield {
                     "type": "full_detail",
                     "schemes": enriched,
                     "lang": lang,
                 }
+                return
             else:
                 reply = reply_in_lang(ls("no_schemes_found"))
                 save_to_history(session_id, question, reply)
-                return {"type": "conversational", "reply": reply, "lang": lang}
+                yield {"type": "conversational", "reply": reply, "lang": lang}
+                return
 
         gender_hint = extract_gender_from_question(question_en)
 
@@ -1311,7 +1321,8 @@ def ask_agent(question: str, session_id: str = "user_1", ui_lang: str = None):
         ]):
             session["awaiting_profile"] = True
             save_to_history(session_id, question, PROFILE_REQUEST)
-            return {"type": "conversational", "reply": PROFILE_REQUEST, "lang": lang}
+            yield {"type": "conversational", "reply": PROFILE_REQUEST, "lang": lang}
+            return
 
         profile = session["user_profile"]
 
@@ -1323,26 +1334,31 @@ def ask_agent(question: str, session_id: str = "user_1", ui_lang: str = None):
             if not eligible:
                 reply = reply_in_lang(ls("no_additional_schemes"))
                 save_to_history(session_id, question, reply)
-                return {"type": "conversational", "reply": reply, "lang": lang}
+                yield {"type": "conversational", "reply": reply, "lang": lang}
+                return
             save_to_history(session_id, question, f"Found {len(eligible)} eligible schemes.")
             session["last_schemes"] = eligible
-            return {"type": "eligibility_result", "profile": profile.model_dump(), "schemes": eligible, "lang": lang}
+            yield {"type": "eligibility_result", "profile": profile.model_dump(), "schemes": eligible, "lang": lang}
+            return
 
         if last_schemes:
             print("🔍 Checking eligibility for shown schemes...")
             results = check_eligibility_for_schemes(profile, last_schemes)
             save_to_history(session_id, question, f"Checked eligibility for {len(last_schemes)} schemes.")
-            return {"type": "eligibility_for_shown", "profile": profile.model_dump(), "schemes": results, "lang": lang}
+            yield {"type": "eligibility_for_shown", "profile": profile.model_dump(), "schemes": results, "lang": lang}
+            return
 
         print("🔍 Searching all schemes for your eligibility...")
         eligible = fetch_eligible_schemes(profile, k=4)
         if not eligible:
             reply = reply_in_lang(ls("no_schemes_found"))
             save_to_history(session_id, question, reply)
-            return {"type": "conversational", "reply": reply, "lang": lang}
+            yield {"type": "conversational", "reply": reply, "lang": lang}
+            return
         save_to_history(session_id, question, f"Found {len(eligible)} eligible schemes.")
         session["last_schemes"] = eligible
-        return {"type": "eligibility_result", "profile": profile.model_dump(), "schemes": eligible, "lang": lang}
+        yield {"type": "eligibility_result", "profile": profile.model_dump(), "schemes": eligible, "lang": lang}
+        return
 
     # ── Normal scheme queries ────────────────────────────────────────────────
     session["awaiting_profile"] = False
@@ -1387,9 +1403,21 @@ def ask_agent(question: str, session_id: str = "user_1", ui_lang: str = None):
     if intent == "names_only":
         selected = schemes[:limit] if limit else schemes
         names_text = "\n".join(f"{i+1}. {s.scheme_name}" for i, s in enumerate(selected))
+        names_text += "\n\n💡 Ask me for full details of any scheme above."
         reply = reply_in_lang(names_text)
         save_to_history(session_id, question, reply)
-        return {"type": "names_only", "reply": reply, "lang": lang}
+
+        # Stream names as text tokens (ChatGPT-style)
+        import time
+        yield {"type": "conversational_start", "lang": lang}
+        # Split into small chunks for typing effect
+        words = reply.split(" ")
+        for i, word in enumerate(words):
+            chunk = word if i == 0 else " " + word
+            yield {"type": "chunk", "text": chunk}
+            time.sleep(0.02)  # Simulate actual typing speed
+        yield {"type": "conversational_end"}
+        return
 
     if intent == "specific_field":
         field = detect_field(question_en)
@@ -1398,21 +1426,54 @@ def ask_agent(question: str, session_id: str = "user_1", ui_lang: str = None):
         reply_en = "\n\n".join(lines)
         reply = reply_in_lang(reply_en)
         save_to_history(session_id, question, reply)
-        return {"type": "specific_field", "field": field, "reply": reply, "lang": lang}
+        yield {"type": "specific_field", "field": field, "reply": reply, "lang": lang}
+        return
 
     if intent in ("conversational", "greeting", "scheme_count"):
-        reply = conversational_reply(question, chat_history, lang, intent=intent)
-        save_to_history(session_id, question, reply)
-        return {"type": "conversational", "reply": reply, "lang": lang}
+        yield {"type": "conversational_start", "lang": lang}
+        full_reply = ""
+        for chunk in conversational_reply_stream(question, chat_history, lang, intent=intent):
+            full_reply += chunk
+            yield {"type": "chunk", "text": chunk}
+        save_to_history(session_id, question, full_reply)
+        yield {"type": "conversational_end"}
+        return
 
-    # full_detail
+    # full_detail — Stream TEXT -> then render CARDS
+    import time
     selected = schemes[:limit] if limit else schemes
     save_to_history(session_id, question, f"Showed details for: {', '.join(s.scheme_name for s in selected)}")
     dicts = [s.model_dump() for s in selected]
+
+    preview_parts = []
+    for i, d in enumerate(dicts):
+        benefits_short = str(d.get("benefits", ""))[:150]
+        preview_parts.append(f"**{i+1}. {d['scheme_name']}**\nBenefits: {benefits_short}...\n")
+    
+    preview_text = "Here are the details:\n\n" + "\n".join(preview_parts) + "\n*Loading cards...*"
+    preview_text = reply_in_lang(preview_text)
+
+    # Run enrichment in background WHILE streaming text
     with ThreadPoolExecutor(max_workers=min(len(dicts), 5)) as ex:
-        enriched = list(ex.map(apply_visit_site_fallback, dicts))
-    return {
-        "type": "full_detail",
-        "schemes": enriched,
-        "lang": lang,
-    }
+        futures = {ex.submit(apply_visit_site_fallback, d): i for i, d in enumerate(dicts)}
+        
+        # Stream the typing effect text
+        yield {"type": "conversational_start", "lang": lang}
+        words = preview_text.split(" ")
+        for i, word in enumerate(words):
+            chunk = word if i == 0 else " " + word
+            yield {"type": "chunk", "text": chunk}
+            time.sleep(0.03)  # simulates typing and masks the web scraping latency
+        
+        # Ensure we don't accidentally send a conversational_end yet, we just pause
+        results = [None] * len(dicts)
+        for future in as_completed(futures):
+            idx = futures[future]
+            try:
+                results[idx] = future.result()
+            except Exception:
+                results[idx] = dicts[idx]
+
+    # Convert the streamed text bubble into cards!
+    yield {"type": "convert_to_cards", "schemes": results, "lang": lang}
+    return
