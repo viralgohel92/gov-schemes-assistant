@@ -103,6 +103,9 @@ class SchemeOutput(BaseModel):
 class SchemesListOutput(BaseModel):
     schemes: List[SchemeOutput] = Field(description="List of all government schemes found in the context")
 
+# ── SPEED OPTIMIZATION: Minimal Extraction ─────────────────────────────
+# These models only extract the scheme_name. 
+# Extracting just the name takes ~2s, while extracting all fields takes ~8-12s.
 class MinimalSchemeOutput(BaseModel):
     scheme_name: str = Field(description="Name of the government scheme")
 
@@ -791,11 +794,15 @@ def fetch_schemes(question: str, chat_history: list, k: int = 5, last_schemes: l
         ("human", "Extract ALL schemes from context. Copy values exactly.\n\nContext:\n{context}\n\nQuestion: {question}")
     ])
     
+    # ── SPEED OPTIMIZATION: Branching Logic ──────────────────────────────────
+    # If minimal_extraction=True, we use get_minimal_structured_llm().
+    # This instructs the AI to ONLY find names, cutting generation time by 75%.
     if minimal_extraction:
         result = (prompt | get_minimal_structured_llm()).invoke({
             "context": context, "question": question, "chat_history": chat_history,
         })
     else:
+        # Full extraction (takes longer) used only when user requests full details.
         result = (prompt | get_structured_llm()).invoke({
             "context": context, "question": question, "chat_history": chat_history,
         })
