@@ -10,55 +10,236 @@
 </head>
 <body>
 
-<header>
-  <div class="header-left">
-    <span class="flag-icon">🇮🇳</span>
-    <div class="brand-text">
-      <h1>YOJANA AI</h1>
-      <span>Gujarat Government Scheme Assistant</span>
-    </div>
+<div class="sidebar" id="sidebar">
+  <div class="sidebar-header">
+    <button class="new-chat-btn" onclick="clearChat()">+ New Chat</button>
+    <button class="close-sidebar-btn" onclick="toggleSidebar()">✕</button>
   </div>
-  <div class="header-actions">
-    <div class="auto-read-toggle" id="auto-read-btn" onclick="toggleAutoRead()" title="Auto-read AI replies aloud">
-      <span style="font-size:14px">🔊</span>
-      <div class="toggle-track"><div class="toggle-knob"></div></div>
-      <span class="auto-read-label">Auto-Read</span>
-    </div>
-    <div class="lang-selector">
-      <button class="lang-btn active" data-lang="en" onclick="setLang('en')">EN</button>
-      <button class="lang-btn" data-lang="hi" onclick="setLang('hi')">हिं</button>
-      <button class="lang-btn" data-lang="gu" onclick="setLang('gu')">ગુ</button>
-    </div>
-    <button class="btn-ghost" onclick="clearChat()">⟳ New Chat</button>
+  <div class="history-list" id="history-list">
+    <!-- History items will be injected here -->
   </div>
-</header>
-
-<div class="suggestions-bar" id="suggestions">
-  <div class="chip" onclick="sendChip(this)">Schemes for farmers 🌾</div>
-  <div class="chip" onclick="sendChip(this)">Women welfare schemes</div>
-  <div class="chip" onclick="sendChip(this)">Education scholarships</div>
-  <div class="chip" onclick="sendChip(this)">Healthcare schemes</div>
-  <div class="chip" onclick="sendChip(this)">housing scheme</div>
-  <div class="chip" onclick="sendChip(this)">Startup schemes for youth</div>
-  <div class="chip" onclick="sendChip(this)">Schemes in Gujarat</div>
-  <div class="chip" onclick="sendChip(this)">Skill development programs</div>
-</div>
-
-<div class="chat-container" id="chat">
-  <div class="welcome-card">
-    <span class="wheel">☸️</span>
-    <h2>Jai Hind! How can I help you?</h2>
-    <p>Ask me about any Gujarat government scheme — eligibility, benefits, required documents, application process, and official links.</p>
+  <div class="sidebar-footer">
+    <div id="user-profile-btn" class="user-profile" onclick="handleProfileClick()">
+      <span class="user-avatar">👤</span>
+      <span id="username-display">Login / Sign Up</span>
+      
+      <!-- Profile Dropdown Menu -->
+      <div id="profile-dropdown" class="profile-dropdown glass">
+        <div class="dropdown-item" onclick="toggleProfileModal(event)">
+          <span>📝</span> Update Eligibility
+        </div>
+        <div class="dropdown-item logout" onclick="handleLogout(event)">
+          <span>🚪</span> Logout
+        </div>
+      </div>
+    </div>
   </div>
 </div>
 
-<div class="input-area">
-  <div class="input-row">
-    <textarea id="question-input" rows="1" placeholder="Ask about any government scheme…" onkeydown="handleKey(event)" oninput="autoResize(this)"></textarea>
-    <button class="mic-btn" id="mic-btn" onclick="toggleVoice()" title="Voice input (click to speak)">🎙️</button>
-    <button class="send-btn" id="send-btn" onclick="sendMessage()">➤</button>
+<div class="main-content">
+  <header>
+    <div class="header-left">
+      <button class="sidebar-toggle" id="sidebar-toggle" onclick="toggleSidebar()">☰</button>
+      <span class="flag-icon">🇮🇳</span>
+      <div class="brand-text">
+        <h1>YOJANA AI</h1>
+        <span>Gujarat Government Scheme Assistant</span>
+      </div>
+    </div>
+    <div class="header-actions">
+      <!-- Notification Bell -->
+      <div class="notif-bell" id="notif-btn" onclick="toggleNotifDropdown()" title="New scheme alerts">
+        <span>🔔</span>
+        <div class="notif-badge" id="notif-badge"></div>
+        <div class="notif-dropdown glass" id="notif-dropdown">
+          <div class="notif-header">Notifications</div>
+          <div class="notif-list" id="notif-list">
+            <div class="notif-empty">No new notifications</div>
+          </div>
+          <div class="notif-footer" onclick="markAllRead(event)">Mark all as read</div>
+        </div>
+      </div>
+
+      <div class="auto-read-toggle" id="auto-read-btn" onclick="toggleAutoRead()" title="Auto-read AI replies aloud">
+        <span style="font-size:14px">🔊</span>
+        <div class="toggle-track"><div class="toggle-knob"></div></div>
+        <span class="auto-read-label">Auto-Read</span>
+      </div>
+      <div class="lang-selector">
+        <button class="lang-btn active" data-lang="en" onclick="setLang('en')">EN</button>
+        <button class="lang-btn" data-lang="hi" onclick="setLang('hi')">हिं</button>
+        <button class="lang-btn" data-lang="gu" onclick="setLang('gu')">ગુ</button>
+      </div>
+    </div>
+  </header>
+
+  <div class="suggestions-bar" id="suggestions">
+    <div class="chip" onclick="sendChip(this)">Schemes for farmers 🌾</div>
+    <div class="chip" onclick="sendChip(this)">Women welfare schemes</div>
+    <div class="chip" onclick="sendChip(this)">Education scholarships</div>
+    <div class="chip" onclick="sendChip(this)">Healthcare schemes</div>
+    <div class="chip" onclick="sendChip(this)">housing scheme</div>
+    <div class="chip" onclick="sendChip(this)">Startup schemes for youth</div>
+    <div class="chip" onclick="sendChip(this)">Schemes in Gujarat</div>
+    <div class="chip" onclick="sendChip(this)">Skill development programs</div>
   </div>
-  <p class="input-hint" id="input-hint">Press Enter to send · Shift+Enter for new line</p>
+
+  <div class="chat-container" id="chat">
+    <div class="welcome-card">
+      <span class="wheel">☸️</span>
+      <h2>Jai Hind! How can I help you?</h2>
+      <p>Ask me about any Gujarat government scheme — eligibility, benefits, required documents, application process, and official links.</p>
+    </div>
+  </div>
+
+  <div class="input-area">
+    <div class="input-row">
+      <textarea id="question-input" rows="1" placeholder="Ask about any government scheme…" onkeydown="handleKey(event)" oninput="autoResize(this)"></textarea>
+      <button class="mic-btn" id="mic-btn" onclick="toggleVoice()" title="Voice input (click to speak)">🎙️</button>
+      <button class="send-btn" id="send-btn" onclick="sendMessage()">➤</button>
+    </div>
+    <p class="input-hint" id="input-hint">Press Enter to send · Shift+Enter for new line</p>
+  </div>
+</div>
+
+<!-- Authentication Modals -->
+<div class="modal-overlay" id="auth-modal" onclick="closeAuthModal(event)">
+  <div class="modal-content glass" onclick="event.stopPropagation()">
+    <div class="modal-tabs">
+      <button class="tab-btn active" onclick="switchAuthTab('login')">Login</button>
+      <button class="tab-btn" onclick="switchAuthTab('signup')">Sign Up</button>
+    </div>
+
+    <!-- Login Form -->
+    <div id="login-form" class="auth-form-container active">
+      <div class="form-group">
+        <label>Email</label>
+        <input type="email" id="login-email" placeholder="example@mail.com">
+      </div>
+      <div class="form-group">
+        <label>Password</label>
+        <input type="password" id="login-password" placeholder="••••••••">
+      </div>
+      <button class="btn-primary" onclick="handleLogin()">Login</button>
+    </div>
+
+    <!-- Signup Form (with Eligibility Info) -->
+    <div id="signup-form" class="auth-form-container">
+      <div class="form-row">
+        <div class="form-group">
+          <label>Full Name</label>
+          <input type="text" id="signup-name" placeholder="John Doe">
+        </div>
+        <div class="form-group">
+          <label>Email</label>
+          <input type="email" id="signup-email" placeholder="example@mail.com">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Password</label>
+          <input type="password" id="signup-password" placeholder="••••••••">
+        </div>
+        <div class="form-group">
+          <label>Confirm Password</label>
+          <input type="password" id="signup-confirm" placeholder="••••••••">
+        </div>
+      </div>
+      
+      <div class="divider"><span>Eligibility Information</span></div>
+      
+      <div class="form-row">
+        <div class="form-group">
+          <label>Age</label>
+          <input type="number" id="signup-age" placeholder="25">
+        </div>
+        <div class="form-group">
+          <label>Gender</label>
+          <select id="signup-gender">
+            <option value="Male">Male</option>
+            <option value="Female">Female</option>
+            <option value="Other">Other</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Annual Income (₹)</label>
+          <input type="number" id="signup-income" placeholder="500000">
+        </div>
+        <div class="form-group">
+          <label>Category</label>
+          <select id="signup-category">
+            <option value="General">General</option>
+            <option value="SC">SC</option>
+            <option value="ST">ST</option>
+            <option value="OBC">OBC</option>
+            <option value="EWS">EWS</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Occupation</label>
+          <input type="text" id="signup-occupation" placeholder="Farmer / Student / Service">
+        </div>
+      </div>
+      <button class="btn-primary" onclick="handleSignup()">Sign Up</button>
+    </div>
+  </div>
+</div>
+
+<!-- Profile / Eligibility Update Modal -->
+<div class="modal-overlay" id="profile-modal" onclick="closeProfileModal(event)">
+  <div class="modal-content glass" onclick="event.stopPropagation()" style="max-width:500px;">
+    <h3 style="color:var(--navy);font-family:'Rajdhani',sans-serif;font-size:22px;margin-bottom:20px;border-bottom:2px solid var(--saffron);padding-bottom:10px;">Update Your Eligibility</h3>
+    
+    <div class="form-row">
+      <div class="form-group">
+        <label>Full Name</label>
+        <input type="text" id="profile-name" placeholder="John Doe">
+      </div>
+      <div class="form-group">
+        <label>Age</label>
+        <input type="number" id="profile-age" placeholder="25">
+      </div>
+    </div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label>Annual Income (₹)</label>
+        <input type="number" id="profile-income" placeholder="500000">
+      </div>
+      <div class="form-group">
+        <label>Category</label>
+        <select id="profile-category">
+          <option value="General">General</option>
+          <option value="SC">SC</option>
+          <option value="ST">ST</option>
+          <option value="OBC">OBC</option>
+          <option value="EWS">EWS</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label>Occupation</label>
+        <input type="text" id="profile-occupation" placeholder="Farmer / Student / Service">
+      </div>
+    </div>
+
+    <!-- Email Notification Toggle -->
+    <div style="margin-top:15px; display:flex; align-items:center; gap:10px;">
+        <input type="checkbox" id="profile-email-notif" style="width:18px; height:18px;">
+        <label for="profile-email-notif" style="font-size:14px; color:var(--navy); cursor:pointer;">Notify me about new schemes via Email</label>
+    </div>
+
+    <div style="display:flex;gap:12px;margin-top:25px;">
+        <button class="btn-primary" onclick="handleUpdateProfile()" style="flex:2">Save Profile</button>
+        <button class="btn-secondary" onclick="toggleProfileModal()" style="flex:1;background:var(--muted);color:white;border:none;border-radius:8px;cursor:pointer;">Cancel</button>
+    </div>
+  </div>
 </div>
 
 <script src="../static/index.js"></script>

@@ -42,6 +42,10 @@ class UserProfile(BaseModel):
     income: Optional[str] = Field(None)
     occupation: Optional[str] = Field(None)
     state: Optional[str] = Field(None)
+    gender: Optional[str] = Field(None)
+    caste_category: Optional[str] = Field(None)
+    extra: Optional[str] = Field(None)
+
 class QueryPreprocessor(BaseModel):
     detected_lang: str = Field(description="Detected language code (en, hi, gu)")
     question_en: str = Field(description="Translation of the user question into English")

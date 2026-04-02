@@ -18,24 +18,12 @@ const VOICE_HINT = {
 function cleanTextForSpeech(text, lang) {
   if (!text) return "";
   const targetLang = lang || currentLang;
-  
-  // Comprehensive Emoji & Symbol stripping
   let cleaned = text.replace(/([\u2700-\u27BF]|[\uE000-\uF8FF]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]|[\u2011-\u26FF]|\uD83E[\uDD10-\uDDFF])/g, '');
-  
-  // Strip specific UI icons and emojis
   cleaned = cleaned.replace(/✅|❌|📋|📌|🎯|📊|💡|🔗|☸️|🇮🇳|🤖|👤|🌾/g, '');
-  
-  // Space out common separators for natural pausing
-  cleaned = cleaned.replace(/&nbsp;/g, ' ')
-                   .replace(/<br>/g, ' . ') // add period for pause
-                   .replace(/<[^>]*>/g, '') 
-                   .replace(/([0-9])\.\s/g, '$1 . ') // space out numbered lists
-                   .replace(/([\.।\?\!])\s/g, '$1   '); // add extra space after sentences
-  
-  // Language-aware slash replacement
+  cleaned = cleaned.replace(/&nbsp;/g, ' ').replace(/<br>/g, ' . ').replace(/<[^>]*>/g, '')
+                   .replace(/([0-9])\.\s/g, '$1 . ').replace(/([\.।\?\!])\s/g, '$1   ');
   const andWord = { 'gu': ' અને ', 'hi': ' और ', 'en': ' and ' }[targetLang] || ' and ';
   cleaned = cleaned.replace(/\//g, andWord);
-  
   return cleaned.trim();
 }
 
@@ -43,189 +31,354 @@ function getVoiceForLang(langCode, isFallbackAttempt = false) {
   if (!window.speechSynthesis) return null;
   const voices = window.speechSynthesis.getVoices();
   if (!voices.length) return null;
-  
   const target = langCode.toLowerCase().replace('_', '-');
   const prefix = target.split('-')[0];
   const langNameMap = { 'gu': 'gujarati', 'hi': 'hindi', 'en': 'english' };
   const targetName = langNameMap[prefix];
-
-  const matches = voices.filter(v => 
-    v.lang.toLowerCase().replace('_', '-') === target || 
-    v.lang.toLowerCase().startsWith(prefix) ||
-    (targetName && v.name.toLowerCase().includes(targetName))
-  );
-
+  const matches = voices.filter(v => v.lang.toLowerCase().replace('_', '-') === target || v.lang.toLowerCase().startsWith(prefix) || (targetName && v.name.toLowerCase().includes(targetName)));
   if (matches.length > 0) {
-    // Priority 1: High quality cloud voices (Google / Microsoft / Online)
-    const premium = matches.find(v => 
-        v.name.toLowerCase().includes('google') || 
-        v.name.toLowerCase().includes('online') || 
-        v.name.toLowerCase().includes('premium') ||
-        v.name.toLowerCase().includes('microsoft')
-    );
-    if (premium) return premium;
-    
-    // Priority 2: Local voices
-    return matches[0];
+    const premium = matches.find(v => v.name.toLowerCase().includes('google') || v.name.toLowerCase().includes('online') || v.name.toLowerCase().includes('premium') || v.name.toLowerCase().includes('microsoft'));
+    return premium || matches[0];
   }
-
-  // 4. Fallback: If Gujarati requested and not found, try Hindi (once)
-  if (!isFallbackAttempt && prefix === 'gu') {
-    return getVoiceForLang('hi-IN', true);
-  }
-  
+  if (!isFallbackAttempt && prefix === 'gu') return getVoiceForLang('hi-IN', true);
   return null;
 }
 
 function toggleVoice() {
-  if (!('webkitSpeechRecognition' in window || 'SpeechRecognition' in window)) {
-    alert('Voice input is not supported in this browser.\nPlease use Google Chrome or Microsoft Edge.');
-    return;
-  }
+  if (!('webkitSpeechRecognition' in window || 'SpeechRecognition' in window)) { alert('Voice input is not supported in this browser.'); return; }
   if (isListening) { recognition && recognition.stop(); return; }
-
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   recognition = new SR();
   recognition.lang = VOICE_LANG[currentLang] || 'en-IN';
   recognition.interimResults = true;
   recognition.continuous = true;
-  recognition.maxAlternatives = 1;
-
-  let silenceTimer = null;
-  const resetSilence = () => {
-    clearTimeout(silenceTimer);
-    silenceTimer = setTimeout(() => { recognition && recognition.stop(); }, 5000);
-  };
-
   recognition.onstart = () => {
-    isListening = true;
-    micBtn.textContent = '🔴';
-    micBtn.classList.add('listening');
-    micBtn.title = 'Listening… click to stop';
+    isListening = true; micBtn.textContent = '🔴'; micBtn.classList.add('listening');
     input.placeholder = VOICE_HINT[currentLang]?.listening || '🎙️ Listening…';
-    inputHint.textContent = VOICE_HINT[currentLang]?.listening || '🎙️ Listening…';
-    input.value = '';
   };
-
   recognition.onresult = (event) => {
     let interim = '', final = '';
     for (let i = event.resultIndex; i < event.results.length; i++) {
-      const t = event.results[i][0].transcript;
-      event.results[i].isFinal ? (final += t) : (interim += t);
+        const t = event.results[i][0].transcript;
+        event.results[i].isFinal ? (final += t) : (interim += t);
     }
     input.value = final || interim;
     autoResize(input);
-    resetSilence();
   };
-
   recognition.onend = () => {
-    isListening = false;
-    micBtn.textContent = '🎙️';
-    micBtn.classList.remove('listening');
-    micBtn.title = 'Voice input (click to speak)';
-    const L = LANG_UI[currentLang];
-    input.placeholder = L.placeholder;
-    inputHint.textContent = L.hint;
-    if (input.value.trim()) input.focus();
+    isListening = false; micBtn.textContent = '🎙️'; micBtn.classList.remove('listening');
+    const L = LANG_UI[currentLang]; input.placeholder = L.placeholder;
   };
-
-  recognition.onerror = (e) => {
-    isListening = false;
-    micBtn.textContent = '🎙️';
-    micBtn.classList.remove('listening');
-    micBtn.title = 'Voice input (click to speak)';
-    const L = LANG_UI[currentLang];
-    input.placeholder = L.placeholder;
-
-    // Silent errors — reset quietly, no alert
-    if (e.error === 'aborted' || e.error === 'no-speech') {
-      inputHint.textContent = L.hint;
-      return;
-    }
-
-    // Real errors — show inline in hint bar, not an intrusive alert
-    const msgs = {
-      'not-allowed': '🚫 Mic blocked — allow microphone access in browser settings.',
-      'network':     '⚠️ Network error during voice recognition. Check your connection.',
-    };
-    inputHint.textContent = msgs[e.error] || ('⚠️ Voice error: ' + e.error);
-    setTimeout(() => { inputHint.textContent = L.hint; }, 4000);
-  };
-
   recognition.start();
 }
 
-// Ensure voices are loaded
-if (window.speechSynthesis) {
-  speechSynthesis.onvoiceschanged = () => { window.speechSynthesis.getVoices(); };
-  window.speechSynthesis.getVoices();
-}
-
-// ── Text-to-Speech (AI reply read aloud) ─────────────────────────────────────
+// ── Text-to-Speech ────────────────────────────────────────────────────────────
 let currentUtterance = null;
 let autoReadEnabled = false;
 
 function toggleAutoRead() {
   autoReadEnabled = !autoReadEnabled;
-  const btn = document.getElementById('auto-read-btn');
-  btn.classList.toggle('on', autoReadEnabled);
-  // Stop any ongoing speech when turning off
-  if (!autoReadEnabled && window.speechSynthesis) {
-    speechSynthesis.cancel();
-    currentUtterance = null;
-    document.querySelectorAll('.speak-btn').forEach(b => {
-      b.textContent = '🔊 Listen'; b.classList.remove('speaking'); b.dataset.speaking = '0';
-    });
-  }
+  document.getElementById('auto-read-btn').classList.toggle('on', autoReadEnabled);
+  if (!autoReadEnabled && window.speechSynthesis) speechSynthesis.cancel();
 }
 
 function speakText(text, btn, lang) {
   if (!window.speechSynthesis) return;
-  const targetLang = lang || currentLang;
   if (currentUtterance) {
-    speechSynthesis.cancel();
-    currentUtterance = null;
-    document.querySelectorAll('.speak-btn').forEach(b => {
-      b.textContent = '🔊 Listen'; b.classList.remove('speaking');
-    });
-    if (btn.dataset.speaking === '1') { btn.dataset.speaking = '0'; return; }
+    speechSynthesis.cancel(); currentUtterance = null;
+    if (btn.dataset.speaking === '1') { btn.dataset.speaking = '0'; btn.textContent = '🔊 Listen'; return; }
   }
-  const cleaned = cleanTextForSpeech(text, targetLang);
-  if (!cleaned) return;
-
+  const cleaned = cleanTextForSpeech(text, lang || currentLang);
   const utter = new SpeechSynthesisUtterance(cleaned);
-  const langCode = VOICE_LANG[targetLang] || 'en-IN';
-  utter.lang = langCode;
-  
-  const voice = getVoiceForLang(langCode);
-  if (voice) {
-    utter.voice = voice;
-    // If we fell back to Hindi for Gujarati, update the utter.lang so the engine works
-    if (langCode.startsWith('gu') && voice.lang.startsWith('hi')) {
-       utter.lang = 'hi-IN';
-    }
-  }
-
-  utter.rate = 0.92;
-  utter.pitch = 1;
-  utter.volume = 1;
-
-  currentUtterance = utter;
-  
-  utter.onstart = () => {
-    btn.textContent = '⏹ Stop';
-    btn.classList.add('speaking');
-    btn.dataset.speaking = '1';
-  };
-
-  utter.onend = utter.onerror = () => {
-    currentUtterance = null;
-    btn.textContent = '🔊 Listen';
-    btn.classList.remove('speaking');
-    btn.dataset.speaking = '0';
-  };
-
+  utter.lang = VOICE_LANG[lang || currentLang] || 'en-IN';
+  utter.voice = getVoiceForLang(utter.lang);
+  utter.onstart = () => { btn.textContent = '⏹ Stop'; btn.dataset.speaking = '1'; };
+  utter.onend = () => { btn.textContent = '🔊 Listen'; btn.dataset.speaking = '0'; };
   speechSynthesis.speak(utter);
+  currentUtterance = utter;
+}
+
+// ── UI / Sidebar / Auth ───────────────────────────────────────────────────────
+function toggleSidebar() {
+  document.getElementById('sidebar').classList.toggle('hidden');
+}
+
+function toggleAuthModal() {
+  document.getElementById('auth-modal').classList.toggle('active');
+}
+
+function closeAuthModal(e) {
+  if (e.target.id === 'auth-modal') toggleAuthModal();
+}
+
+function switchAuthTab(tab) {
+  const isLogin = tab === 'login';
+  document.getElementById('login-form').classList.toggle('active', isLogin);
+  document.getElementById('signup-form').classList.toggle('active', !isLogin);
+  document.querySelectorAll('.tab-btn')[0].classList.toggle('active', isLogin);
+  document.querySelectorAll('.tab-btn')[1].classList.toggle('active', !isLogin);
+}
+
+let currentUser = null;
+let currentChatId = null;
+let currentChatMessages = [];
+
+async function handleLogin() {
+  const email = document.getElementById('login-email').value;
+  const password = document.getElementById('login-password').value;
+  const res = await fetch('/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password })});
+  const data = await res.json();
+  if (res.ok) { currentUser = data.user; updateUserUI(); toggleAuthModal(); loadHistory(); }
+  else alert(data.error);
+}
+
+async function handleSignup() {
+  const body = {
+    full_name: document.getElementById('signup-name').value,
+    email: document.getElementById('signup-email').value,
+    password: document.getElementById('signup-password').value,
+    age: document.getElementById('signup-age').value,
+    gender: document.getElementById('signup-gender').value,
+    income: document.getElementById('signup-income').value,
+    category: document.getElementById('signup-category').value,
+    residence: "Gujarat",
+    occupation: document.getElementById('signup-occupation').value
+  };
+  const res = await fetch('/signup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)});
+  const data = await res.json();
+  if (res.ok) { currentUser = data.user; updateUserUI(); toggleAuthModal(); loadHistory(); }
+  else alert(data.error);
+}
+
+function updateUserUI() {
+  const display = document.getElementById('username-display');
+  const dropdown = document.getElementById('profile-dropdown');
+  if (currentUser) {
+    display.textContent = currentUser.name;
+    // We now let handleProfileClick manage the click
+  } else {
+    display.textContent = 'Login / Sign Up';
+    if (dropdown) dropdown.classList.remove('active');
+  }
+}
+
+function handleProfileClick() {
+    if (!currentUser) {
+        toggleAuthModal();
+    } else {
+        const dropdown = document.getElementById('profile-dropdown');
+        dropdown.classList.toggle('active');
+    }
+}
+
+// Close dropdown when clicking outside
+window.addEventListener('click', (e) => {
+    const btn = document.getElementById('user-profile-btn');
+    const dropdown = document.getElementById('profile-dropdown');
+    if (btn && !btn.contains(e.target) && dropdown) {
+        dropdown.classList.remove('active');
+    }
+});
+
+function toggleProfileModal(event) {
+  if (event) event.stopPropagation();
+  const modal = document.getElementById('profile-modal');
+  modal.classList.toggle('active');
+  
+  if (modal.classList.contains('active') && currentUser) {
+    // Note: We need to fetch full profile data from /me to pre-fill
+    fetch('/me').then(res => res.json()).then(data => {
+        if (data.user) {
+            document.getElementById('profile-name').value = data.user.name || "";
+            document.getElementById('profile-age').value = data.user.age || "";
+            document.getElementById('profile-income').value = data.user.income || "";
+            document.getElementById('profile-category').value = data.user.category || "General";
+            document.getElementById('profile-occupation').value = data.user.occupation || "";
+            document.getElementById('profile-email-notif').checked = data.user.email_notifications;
+        }
+    });
+  }
+}
+
+function closeProfileModal(e) {
+  if (e.target.id === 'profile-modal') toggleProfileModal();
+}
+
+async function handleUpdateProfile() {
+  const body = {
+    full_name: document.getElementById('profile-name').value,
+    age: document.getElementById('profile-age').value,
+    income: document.getElementById('profile-income').value,
+    category: document.getElementById('profile-category').value,
+    occupation: document.getElementById('profile-occupation').value,
+    email_notifications: document.getElementById('profile-email-notif').checked
+  };
+
+  const res = await fetch('/update_profile', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+
+  const data = await res.json();
+  if (res.ok) {
+    currentUser = data.user;
+    updateUserUI();
+    toggleProfileModal();
+    alert("Profile updated successfully!");
+  } else {
+    alert(data.error || "Failed to update profile");
+  }
+}
+
+async function handleLogout(event) {
+  if (event) event.stopPropagation();
+  if (!confirm("Are you sure you want to log out?")) return;
+  
+  await fetch('/logout', { method: 'POST' });
+  currentUser = null;
+  currentChatId = null;
+  location.reload();
+}
+
+window.onload = async () => {
+  setLang('en');
+  updateUserUI();
+  const res = await fetch('/me');
+  const data = await res.json();
+  if (data.user) {
+    currentUser = data.user;
+    updateUserUI();
+    loadHistory();
+  }
+};
+
+async function loadHistory() {
+  if (!currentUser) return;
+  const res = await fetch('/get_history');
+  const items = await res.json();
+  const list = document.getElementById('history-list');
+  list.innerHTML = '';
+  
+  items.forEach(item => {
+    const div = document.createElement('div');
+    div.className = `history-item ${currentChatId == item.id ? 'active' : ''}`;
+    div.onclick = (e) => {
+        // Only switch if we didn't click the menu
+        if (!e.target.closest('.history-menu-btn') && !e.target.closest('.history-dropdown')) {
+            switchChat(item);
+        }
+    };
+
+    div.innerHTML = `
+      <span class="chat-title">${escapeHtml(item.title || 'New Chat')}</span>
+      <div class="history-menu-btn" onclick="toggleHistoryMenu(event, ${item.id})">•••</div>
+      <div id="dropdown-${item.id}" class="history-dropdown" onclick="event.stopPropagation()">
+        <div class="history-dropdown-item" onclick="renameChat(event, ${item.id}, '${escapeJs(item.title || 'New Chat')}')">
+          <span>✏️</span> Rename
+        </div>
+        <div class="history-dropdown-item delete" onclick="deleteChat(event, ${item.id})">
+          <span>🗑️</span> Delete
+        </div>
+      </div>
+    `;
+    list.appendChild(div);
+  });
+}
+
+function escapeJs(str) {
+  return str.replace(/'/g, "\\'");
+}
+
+function toggleHistoryMenu(event, id) {
+  event.stopPropagation();
+  // Close others
+  document.querySelectorAll('.history-dropdown').forEach(d => {
+    if (d.id !== `dropdown-${id}`) d.classList.remove('active');
+  });
+  const d = document.getElementById(`dropdown-${id}`);
+  d.classList.toggle('active');
+}
+
+// Close history menus when clicking elsewhere
+window.addEventListener('click', (e) => {
+  if (!e.target.closest('.history-menu-btn')) {
+    document.querySelectorAll('.history-dropdown').forEach(d => d.classList.remove('active'));
+  }
+});
+
+async function renameChat(event, id, oldTitle) {
+  event.stopPropagation();
+  const newTitle = prompt("Enter new chat name:", oldTitle);
+  if (!newTitle || newTitle === oldTitle) return;
+
+  const res = await fetch('/rename_chat', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ chat_id: id, title: newTitle })
+  });
+
+  if (res.ok) {
+    loadHistory();
+  } else {
+    alert("Failed to rename chat");
+  }
+}
+
+async function deleteChat(event, id) {
+  event.stopPropagation();
+  if (!confirm("Are you sure you want to delete this chat?")) return;
+
+  const res = await fetch('/delete_chat', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ chat_id: id })
+  });
+
+  if (res.ok) {
+    if (currentChatId === id) {
+        clearChatUI();
+    }
+    loadHistory();
+  } else {
+    alert("Failed to delete chat");
+  }
+}
+
+function clearChatUI() {
+    currentChatId = null;
+    currentChatMessages = [];
+    chat.innerHTML = `<div class="welcome-card">
+        <span class="wheel">☸️</span>
+        <h2>New conversation started!</h2>
+        <p>Ask me about any Gujarat government scheme.</p>
+    </div>`;
+}
+
+function switchChat(chatData) {
+  currentChatId = chatData.id;
+  currentChatMessages = chatData.messages || [];
+  chat.innerHTML = '';
+  currentChatMessages.forEach(msg => msg.role === 'user' ? addUserMessage(msg.content) : renderResult(msg.result));
+  loadHistory();
+  if (window.innerWidth < 600) toggleSidebar();
+}
+
+async function saveChat(userMsg, aiResult) {
+  if (!currentUser) return;
+  currentChatMessages.push({ role: 'user', content: userMsg }, { role: 'assistant', result: aiResult });
+  
+  // Only suggest/send a title on the very first message save of a new chat
+  const title = (currentChatId === null) ? currentChatMessages[0].content.substring(0, 30) : null;
+  
+  const res = await fetch('/save_chat', { 
+    method: 'POST', 
+    headers: { 'Content-Type': 'application/json' }, 
+    body: JSON.stringify({ chat_id: currentChatId, title, messages: currentChatMessages })
+  });
+  
+  const data = await res.json();
+  if (res.ok) { currentChatId = data.chat_id; loadHistory(); }
 }
 
 function autoResize(el) {
@@ -669,7 +822,7 @@ async function sendMessage() {
       if (done) break;
       buffer += decoder.decode(value, { stream: true });
       let lines = buffer.split('\n');
-      buffer = lines.pop(); // keep last partial line
+      buffer = lines.pop();
       
       for (const line of lines) {
         if (line.startsWith('data: ')) {
@@ -687,13 +840,12 @@ async function sendMessage() {
               fullText = '';
             } else if (data.type === 'chunk') {
               fullText += data.text;
-              if (streamingBubble) {
-                streamingBubble.innerHTML = escapeHtml(fullText);
-                scrollBottom();
-              }
+              if (streamingBubble) { streamingBubble.innerHTML = escapeHtml(fullText); scrollBottom(); }
             } else if (data.type === 'conversational_end') {
               if (streamingRow) streamingRow.remove();
-              renderResult({ type: 'conversational', reply: fullText, lang: serverLang });
+              const result = { type: 'conversational', reply: fullText, lang: serverLang };
+              renderResult(result);
+              saveChat(q, result);
             } else if (data.type === 'schemes_start') {
               removeTyping();
               const row = document.createElement('div');
@@ -707,33 +859,26 @@ async function sendMessage() {
                 const temp = document.createElement('div');
                 temp.innerHTML = cardHtml;
                 const card = temp.firstElementChild;
-                card.style.opacity = '0';
-                card.style.transform = 'translateY(12px)';
+                card.style.opacity = '0'; card.style.transform = 'translateY(12px)';
                 card.style.transition = 'opacity 0.3s ease, transform 0.3s ease';
                 schemesWrapper.appendChild(card);
-                // Trigger animation
-                requestAnimationFrame(() => {
-                  card.style.opacity = '1';
-                  card.style.transform = 'translateY(0)';
-                });
+                requestAnimationFrame(() => { card.style.opacity = '1'; card.style.transform = 'translateY(0)'; });
                 scrollBottom();
               }
             } else if (data.type === 'schemes_end') {
-              // Cards are already rendered, nothing else needed
+               // Full detail schemes are handled by individual cards usually, 
+               // but for saving we might want the full list.
+               // RAG agent usually sends individual cards or full detail if asked.
             } else if (data.type === 'convert_to_cards') {
-              // Option 1 Flow: Remove the typing text bubble and render final cards
-              if (streamingRow) {
-                streamingRow.remove();
-                streamingRow = null;
-                streamingBubble = null;
-              }
-              data.type = 'full_detail';
-              data.lang = serverLang;
+              if (streamingRow) streamingRow.remove();
+              data.type = 'full_detail'; data.lang = serverLang;
               renderResult(data);
+              saveChat(q, data);
             } else {
               removeTyping();
               if (!data.lang) data.lang = serverLang;
               renderResult(data);
+              saveChat(q, data);
             }
           } catch(e) {}
         }
@@ -750,11 +895,14 @@ async function sendMessage() {
 
 async function clearChat() {
   await fetch('/reset', { method: 'POST' });
+  currentChatId = null;
+  currentChatMessages = [];
   chat.innerHTML = `<div class="welcome-card">
     <span class="wheel">☸️</span>
     <h2>New conversation started!</h2>
     <p>Ask me about any Gujarat government scheme.</p>
   </div>`;
+  loadHistory(); // Re-toggle active state in sidebar
 }
 
 // ── Language Switcher ────────────────────────────────────────────────────────
@@ -808,3 +956,78 @@ function setLang(lang) {
     .map(c => `<div class="chip" onclick="sendChip(this)">${c}</div>`)
     .join('');
 }
+
+// ── Web Notifications ────────────────────────────────────────────────────────
+function toggleNotifDropdown() {
+  const dropdown = document.getElementById('notif-dropdown');
+  dropdown.classList.toggle('active');
+  if (dropdown.classList.contains('active')) {
+    loadNotifications();
+  }
+}
+
+async function loadNotifications() {
+  if (!currentUser) return;
+  const res = await fetch('/get_notifications');
+  const data = await res.json();
+  const list = document.getElementById('notif-list');
+  const badge = document.getElementById('notif-badge');
+
+  if (data.unread_count > 0) {
+    badge.classList.add('active');
+  } else {
+    badge.classList.remove('active');
+  }
+
+  if (data.notifications && data.notifications.length > 0) {
+    list.innerHTML = data.notifications.map(n => `
+      <div class="notif-item">
+        <div class="notif-content">
+          <div class="notif-title">${escapeHtml(n.title)}</div>
+          <div class="notif-text">${escapeHtml(n.message)}</div>
+        </div>
+        <span class="notif-delete" onclick="deleteNotification(event, ${n.id})" title="Delete notification">✕</span>
+      </div>
+    `).join('');
+  } else {
+    list.innerHTML = '<div class="notif-empty">No current notifications</div>';
+  }
+}
+
+async function deleteNotification(e, id) {
+  if (e) e.stopPropagation();
+  await fetch('/delete_notification', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id: id })
+  });
+  loadNotifications();
+}
+
+async function markAllRead(e) {
+  if (e) e.stopPropagation();
+  await fetch('/mark_read', { method: 'POST' });
+  const badge = document.getElementById('notif-badge');
+  badge.classList.remove('active');
+  loadNotifications();
+}
+
+// Close notifications when clicking outside
+window.addEventListener('click', (e) => {
+  const btn = document.getElementById('notif-btn');
+  const dropdown = document.getElementById('notif-dropdown');
+  if (btn && !btn.contains(e.target) && dropdown) {
+    dropdown.classList.remove('active');
+  }
+});
+
+// Update window.onload to also fetch notifications
+const originalOnload = window.onload;
+window.onload = async () => {
+    if (originalOnload) await originalOnload();
+    if (currentUser) {
+        loadNotifications();
+        // Check for new notifications every 5 minutes
+        setInterval(loadNotifications, 5 * 60 * 1000);
+    }
+};

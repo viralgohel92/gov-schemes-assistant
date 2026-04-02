@@ -34,13 +34,13 @@ def format_docs(docs):
 
 def profile_to_text(profile: UserProfile) -> str:
     lines = [
-        f"- Age: {profile.age}" if profile.age else "",
-        f"- Annual Income: {profile.income}" if profile.income else "",
-        f"- Occupation: {profile.occupation}" if profile.occupation else "",
-        f"- State: {profile.state}" if profile.state else "",
-        f"- Gender: {profile.gender}" if profile.gender else "",
-        f"- Caste/Category: {profile.caste_category}" if profile.caste_category else "",
-        f"- Other: {profile.extra}" if profile.extra else "",
+        f"- Age: {getattr(profile, 'age', None)}" if getattr(profile, 'age', None) else "",
+        f"- Annual Income: {getattr(profile, 'income', None)}" if getattr(profile, 'income', None) else "",
+        f"- Occupation: {getattr(profile, 'occupation', None)}" if getattr(profile, 'occupation', None) else "",
+        f"- State: {getattr(profile, 'state', None)}" if getattr(profile, 'state', None) else "",
+        f"- Gender: {getattr(profile, 'gender', None)}" if getattr(profile, 'gender', None) else "",
+        f"- Caste/Category: {getattr(profile, 'caste_category', None)}" if getattr(profile, 'caste_category', None) else "",
+        f"- Other: {getattr(profile, 'extra', None)}" if getattr(profile, 'extra', None) else "",
     ]
     return "\n".join(l for l in lines if l)
 

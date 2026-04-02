@@ -75,12 +75,23 @@ AI:"""
 # Main ask function
 # -------------------------------------------------
 
-def ask_agent(question: str, session_id: str = "user_1", ui_lang: str = None):
+def ask_agent(question: str, session_id: str = "user_1", ui_lang: str = None, user_context: dict = None):
     session = get_session(session_id)
     chat_history = session["history"]
     awaiting_profile = session.get("awaiting_profile", False)
 
-    # \u2500\u2500 Language detection 
+    # ── Initialize/Update Profile from User Context (if logged in) ──────────
+    if user_context:
+        current_profile = session.get("user_profile") or UserProfile()
+        updated_data = current_profile.model_dump()
+        for k, v in user_context.items():
+            if v and not updated_data.get(k):
+                updated_data[k] = v
+        session["user_profile"] = UserProfile(**updated_data)
+        if not getattr(session["user_profile"], 'state', None):
+            session["user_profile"].state = "Gujarat"
+
+    # ── Language detection ──
     detected = detect_language(question)
     
     # Priority 1: UI selection
@@ -134,23 +145,22 @@ def ask_agent(question: str, session_id: str = "user_1", ui_lang: str = None):
             last = session["last_schemes"]
             scheme_objects = []
             for s in last:
-                if isinstance(s, SchemeOutput):
-                    scheme_objects.append(s)
+                # Check for eligibility content directly
+                has_eligibility = False
+                if hasattr(s, 'eligibility') and s.eligibility:
+                    has_eligibility = True
+                elif isinstance(s, dict) and s.get('eligibility'):
+                    has_eligibility = True
+                
+                if has_eligibility:
+                    if isinstance(s, dict): scheme_objects.append(SchemeOutput(**s))
+                    else: scheme_objects.append(s)
                 else:
-                    name = s.get("scheme_name", "")
+                    name = s.scheme_name if hasattr(s, 'scheme_name') else s.get('scheme_name')
                     if name:
-                        fetched = fetch_schemes(name, [], k=3, last_schemes=[])
-                        if fetched:
-                            scheme_objects.append(fetched[0])
-                        else:
-                            scheme_objects.append(SchemeOutput(
-                                scheme_name=name,
-                                description="", category=s.get("category", ""),
-                                benefits="", eligibility="",
-                                documents_required="", application_process="",
-                                state=s.get("state", ""),
-                                official_link=s.get("official_link", "")
-                            ))
+                        fetched = fetch_schemes(name, [], k=1, last_schemes=[])
+                        if fetched: scheme_objects.append(fetched[0])
+            
             if scheme_objects:
                 print("🔍 Checking eligibility for shown schemes...")
                 results = check_eligibility_for_schemes(profile, scheme_objects)
@@ -244,9 +254,35 @@ def ask_agent(question: str, session_id: str = "user_1", ui_lang: str = None):
             return
 
         if last_schemes:
-            print("🔍 Checking eligibility for shown schemes...")
-            results = check_eligibility_for_schemes(profile, last_schemes)
-            save_to_history(session_id, question, f"Checked eligibility for {len(last_schemes)} schemes.")
+            print(f"🔍 Found {len(last_schemes)} schemes in history. Converting to full detail...")
+            
+            full_schemes = []
+            for s in last_schemes:
+                # Be very robust: check if it has the required field for eligibility check
+                has_eligibility = False
+                if hasattr(s, 'eligibility') and s.eligibility:
+                    has_eligibility = True
+                elif isinstance(s, dict) and s.get('eligibility'):
+                    has_eligibility = True
+                
+                if has_eligibility and (isinstance(s, SchemeOutput) or (isinstance(s, dict) and 'scheme_name' in s)):
+                    # If it's a dict but has full details, convert it to SchemeOutput
+                    if isinstance(s, dict):
+                        full_schemes.append(SchemeOutput(**s))
+                    else:
+                        full_schemes.append(s)
+                else:
+                    # It's a MinimalSchemeOutput or a dict with just names -> Fetch full detail
+                    name = s.scheme_name if hasattr(s, 'scheme_name') else s.get('scheme_name')
+                    if name:
+                        print(f"   -> Fetching full details for: {name}")
+                        fetched = fetch_schemes(name, [], k=1, last_schemes=[])
+                        if fetched:
+                            full_schemes.append(fetched[0])
+            
+            print(f"🔍 Proceeding with eligibility check for {len(full_schemes)} full schemes.")
+            results = check_eligibility_for_schemes(profile, full_schemes)
+            save_to_history(session_id, question, f"Checked eligibility for {len(full_schemes)} schemes.")
             yield {"type": "eligibility_for_shown", "profile": profile.model_dump(), "schemes": results, "lang": lang}
             return
 
