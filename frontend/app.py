@@ -10,10 +10,10 @@ if REPO_ROOT not in sys.path:
     sys.path.insert(0, REPO_ROOT)
 
 from flask import Flask, render_template, request, jsonify, session
-from flask_mail import Mail, Message
 from werkzeug.security import generate_password_hash, check_password_hash
 from database.db import SessionLocal
-from database.models import User, ChatHistory
+from database.models import User, ChatHistory, Notification
+from utils.notifier import broadcast_new_schemes
 
 warnings.filterwarnings("ignore")
 try:
@@ -25,50 +25,8 @@ except ModuleNotFoundError:
 app = Flask(__name__)
 app.secret_key = "your-secret-key-change-this"  # Change this in production
 
-# ── Flask-Mail configuration (Email Push) ───────────────────────────────────
-# Replace with your actual SMTP credentials (e.g., from Gmail)
-app.config['MAIL_SERVER'] = 'smtp.gmail.com'
-app.config['MAIL_PORT'] = 587
-app.config['MAIL_USE_TLS'] = True
-app.config['MAIL_USERNAME'] = 'parthravalp20p@gmail.com' # CHANGE THIS
-app.config['MAIL_PASSWORD'] = 'wtam tkid vzwo ozdc'   # CHANGE THIS (Use Gmail App Password)
-app.config['MAIL_DEFAULT_SENDER'] = 'Yojana AI Notifications <parthravalp20p@gmail.com>'
-
-mail = Mail(app)
-
-def send_scheme_broadcast(notif_title, notif_message):
-    """Sends a real email alert to all users who have notifications enabled."""
-    db = SessionLocal()
-    try:
-        from database.models import User
-        # Only send to users who want email alerts
-        users = db.query(User).filter(User.email_notifications == 1).all()
-        for user in users:
-            try:
-                msg = Message(
-                    subject=f"📢 Yojana AI Alert: {notif_title}",
-                    recipients=[user.email],
-                    body=f"Namaste {user.full_name},\n\n{notif_message}\n\nCheck your eligibility now at: http://127.0.0.1:5000/ \n\nTeam Yojana AI",
-                    html=f"""
-                    <div style="font-family: Arial, sans-serif; border: 2px solid #FF9933; padding: 20px; border-radius: 10px;">
-                        <h2 style="color: #000080;">Yojana AI Alert</h2>
-                        <hr style="border: 1px solid #138808;">
-                        <p>Namaste <strong>{user.full_name}</strong>,</p>
-                        <p style="font-size: 16px; color: #333;">{notif_message}</p>
-                        <a href="http://127.0.0.1:5000/" style="display: inline-block; padding: 10px 20px; background: #FF9933; color: white; text-decoration: none; border-radius: 5px; font-weight: bold;">Check My Eligibility</a>
-                        <p style="font-size: 12px; color: #777; margin-top: 30px;">
-                            You are receiving this because you signed up for Gujarat Government Scheme alerts. 
-                            You can unsubscribe in your Profile settings.
-                        </p>
-                    </div>
-                    """
-                )
-                mail.send(msg)
-                print(f"📧 Sent alert to {user.email}")
-            except Exception as e:
-                print(f"⚠️ Failed to send email to {user.email}: {e}")
-    finally:
-        db.close()
+# ── Notifications Utility ───────────────────────────────────────────────────
+# We now use utils/notifier.py for all email broadcasts.
 
 
 # -------------------------------------------------

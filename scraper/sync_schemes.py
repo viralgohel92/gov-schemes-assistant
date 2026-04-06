@@ -37,6 +37,13 @@ import logging
 from datetime import datetime
 from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
 
+# Ensure repo root is on PYTHONPATH
+import sys
+REPO_ROOT_FOR_AUTH = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if REPO_ROOT_FOR_AUTH not in sys.path:
+    sys.path.insert(0, REPO_ROOT_FOR_AUTH)
+
+from utils.notifier import broadcast_new_schemes
 from dotenv import load_dotenv
 load_dotenv()
 
@@ -720,6 +727,12 @@ def run_sync():
         if failed:
             for f in failed:
                 log.info(f"      - {f}")
+        
+        # ── Trigger Broadcast Notification ────────────────────────────────────
+        if added > 0:
+            new_names = [live_schemes[s]["scheme_name"] for s in sorted(new_slugs) if s in live_schemes]
+            log.info(f"\n📢 Triggering broadcast for {added} new schemes...")
+            broadcast_new_schemes(new_names)
     else:
         log.info("\n✅ No new schemes to add.")
 
