@@ -159,6 +159,72 @@ def ask():
     return Response(stream_with_context(generate()), mimetype='text/event-stream')
 
 
+@app.route("/stt", methods=["POST"])
+def speech_to_text():
+    if 'audio' not in request.files:
+        return jsonify({"error": "No audio file provided"}), 400
+    
+    audio_file = request.files['audio']
+    # Use a unique name to avoid collisions
+    temp_filename = f"stt_{uuid.uuid4()}.webm"
+    temp_path = os.path.join(REPO_ROOT, "tmp", temp_filename)
+    os.makedirs(os.path.dirname(temp_path), exist_ok=True)
+    audio_file.save(temp_path)
+    
+    try:
+        from groq import Groq
+        groq_key = os.getenv("GROQ_API_KEY")
+        if not groq_key:
+            return jsonify({"error": "GROQ_API_KEY not found in server .env"}), 500
+            
+        client = Groq(api_key=groq_key)
+        
+        with open(temp_path, "rb") as file:
+            transcription = client.audio.transcriptions.create(
+                file=(temp_path, file.read()),
+                model="whisper-large-v3",
+                response_format="json"
+            )
+        
+        return jsonify({"text": transcription.text})
+    except Exception as e:
+        print(f"STT Error: {e}")
+        return jsonify({"error": str(e)}), 500
+    finally:
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
+
+
+@app.route("/tts", methods=["GET"])
+def text_to_speech():
+    from flask import send_file
+    import asyncio
+    from utils.voice import generate_speech
+    
+    text = request.args.get("text", "")
+    lang = request.args.get("lang", "en")
+    
+    if not text:
+        return jsonify({"error": "No text provided"}), 400
+    
+    try:
+        # Create a temporary file name for TTS
+        temp_filename = f"tts_{uuid.uuid4()}.mp3"
+        temp_path = os.path.join(REPO_ROOT, "tmp", temp_filename)
+        os.makedirs(os.path.dirname(temp_path), exist_ok=True)
+        
+        # Run the async function from sync Flask
+        asyncio.run(generate_speech(text, lang, temp_path))
+        
+        # We send the file and delete it after sending? 
+        # Actually send_file sends it. We might need a cleanup mechanism but let's send first.
+        return send_file(temp_path, mimetype="audio/mpeg")
+        
+    except Exception as e:
+        print(f"TTS Error: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
 @app.route("/signup", methods=["POST"])
 def signup():
     data = request.json

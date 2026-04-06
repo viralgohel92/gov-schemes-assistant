@@ -6,6 +6,8 @@ const inputHint = document.getElementById('input-hint');
 
 // ── Voice Input (Speech-to-Text) ─────────────────────────────────────────────
 let recognition = null;
+let mediaRecorder = null;
+let audioChunks = [];
 let isListening = false;
 
 const VOICE_LANG = { en: 'en-IN', hi: 'hi-IN', gu: 'gu-IN' };
@@ -44,58 +46,136 @@ function getVoiceForLang(langCode, isFallbackAttempt = false) {
   return null;
 }
 
-function toggleVoice() {
-  if (!('webkitSpeechRecognition' in window || 'SpeechRecognition' in window)) { alert('Voice input is not supported in this browser.'); return; }
-  if (isListening) { recognition && recognition.stop(); return; }
-  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  recognition = new SR();
-  recognition.lang = VOICE_LANG[currentLang] || 'en-IN';
-  recognition.interimResults = true;
-  recognition.continuous = true;
-  recognition.onstart = () => {
-    isListening = true; micBtn.textContent = '🔴'; micBtn.classList.add('listening');
-    input.placeholder = VOICE_HINT[currentLang]?.listening || '🎙️ Listening…';
-  };
-  recognition.onresult = (event) => {
-    let interim = '', final = '';
-    for (let i = event.resultIndex; i < event.results.length; i++) {
-        const t = event.results[i][0].transcript;
-        event.results[i].isFinal ? (final += t) : (interim += t);
+async function toggleVoice() {
+  if (isListening) {
+    if (mediaRecorder && mediaRecorder.state === 'recording') {
+      mediaRecorder.stop();
     }
-    input.value = final || interim;
-    autoResize(input);
-  };
-  recognition.onend = () => {
-    isListening = false; micBtn.textContent = '🎙️'; micBtn.classList.remove('listening');
-    const L = LANG_UI[currentLang]; input.placeholder = L.placeholder;
-  };
-  recognition.start();
+    return;
+  }
+
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    alert('Voice input is not supported in this browser or requires a secure (HTTPS) connection.');
+    return;
+  }
+
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    mediaRecorder = new MediaRecorder(stream);
+    audioChunks = [];
+
+    mediaRecorder.ondataavailable = (event) => {
+      if (event.data.size > 0) audioChunks.push(event.data);
+    };
+
+    mediaRecorder.onstart = () => {
+      isListening = true;
+      micBtn.textContent = '🔴';
+      micBtn.classList.add('listening');
+      input.placeholder = VOICE_HINT[currentLang]?.listening || '🎙️ Listening…';
+    };
+
+    mediaRecorder.onstop = async () => {
+      isListening = false;
+      micBtn.textContent = '🎙️';
+      micBtn.classList.remove('listening');
+      const L = LANG_UI[currentLang];
+      input.placeholder = L.placeholder;
+
+      if (audioChunks.length === 0) return;
+
+      const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+      const formData = new FormData();
+      formData.append('audio', audioBlob);
+
+      // Show processing hint
+      const oldVal = input.value;
+      input.value = (currentLang === 'gu' ? 'પ્રોસેસિંગ...' : (currentLang === 'hi' ? 'प्रसंस्करण...' : 'Processing...'));
+
+      try {
+        const response = await fetch('/stt', {
+          method: 'POST',
+          body: formData
+        });
+        const data = await response.json();
+        if (data.text) {
+          input.value = data.text;
+          autoResize(input);
+        } else {
+          input.value = oldVal;
+          console.error("STT Error:", data.error);
+        }
+      } catch (err) {
+        input.value = oldVal;
+        console.error("Fetch Error:", err);
+      }
+
+      // Stop all tracks
+      stream.getTracks().forEach(track => track.stop());
+    };
+
+    mediaRecorder.start();
+  } catch (err) {
+    console.error("Error accessing microphone:", err);
+    alert("Microphone access denied or error occurred.");
+  }
 }
 
 // ── Text-to-Speech ────────────────────────────────────────────────────────────
-let currentUtterance = null;
+let currentAudio = null;
 let autoReadEnabled = false;
 
 function toggleAutoRead() {
   autoReadEnabled = !autoReadEnabled;
   document.getElementById('auto-read-btn').classList.toggle('on', autoReadEnabled);
-  if (!autoReadEnabled && window.speechSynthesis) speechSynthesis.cancel();
+  if (!autoReadEnabled && currentAudio) {
+    currentAudio.pause();
+    currentAudio = null;
+  }
 }
 
-function speakText(text, btn, lang) {
-  if (!window.speechSynthesis) return;
-  if (currentUtterance) {
-    speechSynthesis.cancel(); currentUtterance = null;
-    if (btn.dataset.speaking === '1') { btn.dataset.speaking = '0'; btn.textContent = '🔊 Listen'; return; }
+async function speakText(text, btn, lang) {
+  if (currentAudio) {
+    currentAudio.pause();
+    currentAudio = null;
+    if (btn && btn.dataset.speaking === '1') {
+      btn.dataset.speaking = '0';
+      btn.textContent = '🔊 Listen';
+      return;
+    }
   }
-  const cleaned = cleanTextForSpeech(text, lang || currentLang);
-  const utter = new SpeechSynthesisUtterance(cleaned);
-  utter.lang = VOICE_LANG[lang || currentLang] || 'en-IN';
-  utter.voice = getVoiceForLang(utter.lang);
-  utter.onstart = () => { btn.textContent = '⏹ Stop'; btn.dataset.speaking = '1'; };
-  utter.onend = () => { btn.textContent = '🔊 Listen'; btn.dataset.speaking = '0'; };
-  speechSynthesis.speak(utter);
-  currentUtterance = utter;
+
+  const targetLang = lang || currentLang;
+  const url = `/tts?text=${encodeURIComponent(text)}&lang=${targetLang}`;
+
+  const audio = new Audio(url);
+  currentAudio = audio;
+
+  if (btn) {
+    btn.textContent = '⌛...';
+    btn.dataset.speaking = '1';
+    audio.onplay = () => { btn.textContent = '⏹ Stop'; };
+    audio.onended = () => {
+      btn.textContent = '🔊 Listen';
+      btn.dataset.speaking = '0';
+      currentAudio = null;
+    };
+    audio.onerror = () => {
+      btn.textContent = '🔊 Listen';
+      btn.dataset.speaking = '0';
+      currentAudio = null;
+    };
+  }
+
+  try {
+    await audio.play();
+  } catch (err) {
+    console.error("Playback failed:", err);
+    if (btn) {
+      btn.textContent = '🔊 Listen';
+      btn.dataset.speaking = '0';
+    }
+  }
 }
 
 // ── UI / Sidebar / Auth ───────────────────────────────────────────────────────
@@ -549,21 +629,19 @@ function renderResult(result) {
 
   // Auto-read: fires for ALL response types when toggle is ON
   if (autoReadEnabled) {
-    // Build the text to speak based on response type
-    let speakText = '';
-
-    if (result.type === 'conversational' && result.reply) {
-      speakText = result.reply;
+    let msgToSpeak = "";
+    if (result.type === 'chunk' || result.type === 'conversational') {
+      msgToSpeak = result.text || result.reply || '';
 
     } else if (result.type === 'names_only' && result.reply) {
-      speakText = result.reply;
+      msgToSpeak = result.reply;
 
     } else if (result.type === 'specific_field' && result.reply) {
       const fieldLabel = (result.field || '').replace(/_/g, ' ');
-      speakText = fieldLabel + '. ' + result.reply;
+      msgToSpeak = fieldLabel + '. ' + result.reply;
 
     } else if (result.type === 'full_detail' && result.schemes?.length) {
-      speakText = result.schemes.map((s, i) =>
+      msgToSpeak = result.schemes.map((s, i) =>
         `Scheme ${i+1}: ${s.scheme_name || ''}. ` +
         (s.description ? `${s.description}. ` : '') +
         (s.benefits ? `${s.benefits}. ` : '') +
@@ -571,102 +649,42 @@ function renderResult(result) {
       ).join(' ');
 
     } else if (result.type === 'eligibility_result' && result.schemes?.length) {
-      speakText = result.schemes.map((s, i) =>
+      msgToSpeak = result.schemes.map((s, i) =>
         `${i+1}: ${s.scheme_name || ''}. ${s.why_eligible || ''}`
       ).join('. ');
 
     } else if (result.type === 'eligibility_for_shown' && result.schemes?.length) {
-      speakText = result.schemes.map(s =>
+      msgToSpeak = result.schemes.map(s =>
         `${s.scheme_name || ''}: ${s.is_eligible ? 'Eligible. ' : 'Not eligible. '}${s.reason || ''}`
       ).join('. ');
 
     } else if (result.error) {
-      speakText = 'Error: ' + result.error;
+      msgToSpeak = 'Error: ' + result.error;
     }
 
-    if (speakText) {
+    if (msgToSpeak) {
       setTimeout(() => {
-        if (!window.speechSynthesis) return;
-        speechSynthesis.cancel();
-
         const bubble = row.querySelector('.bubble.ai') || row.querySelector('.bubble');
-        let wordSpans = [];
-        let alignedText = speakText; 
-
         if (bubble) {
-          wrapWordsInBubble(bubble);
-          wordSpans = Array.from(bubble.querySelectorAll('.tts-word'));
-          if (wordSpans.length > 0) {
-            alignedText = wordSpans.map(s => s.textContent).join(' ');
-          }
+          bubble.style.border = '2px solid var(--saffron)';
+          bubble.style.background = '#fff8f0';
         }
-
-        const cleanedText = cleanTextForSpeech(alignedText, responseLang);
-        if (!cleanedText) return;
-
-        const utter = new SpeechSynthesisUtterance(cleanedText);
-        const langCode = VOICE_LANG[responseLang] || 'en-IN';
-        utter.lang = langCode;
-        
-        const voice = getVoiceForLang(langCode);
-        if (voice) {
-          utter.voice = voice;
-          if (langCode.startsWith('gu') && voice.lang.startsWith('hi')) {
-             utter.lang = 'hi-IN';
-          }
-        }
-
-        utter.rate = 0.88;
-        utter.pitch = 1;
-        currentUtterance = utter;
 
         const btn = row.querySelector('.speak-btn');
-        if (btn) { btn.textContent = '⏹ Stop'; btn.classList.add('speaking'); btn.dataset.speaking = '1'; }
-
-        // Build a char-offset map: for each span, record its start position in alignedText
-        const offsets = [];
-        let pos = 0;
-        wordSpans.forEach((span, i) => {
-          offsets[i] = pos;
-          pos += span.textContent.length + 1; // +1 for the space separator
-        });
-
-        let lastHighlighted = -1;
-        utter.onboundary = (e) => {
-          if (e.name !== 'word') return;
-          // Find the span whose offset is closest to e.charIndex
-          let best = -1, bestDiff = Infinity;
-          for (let i = 0; i < offsets.length; i++) {
-            const diff = Math.abs(offsets[i] - e.charIndex);
-            if (diff < bestDiff) { bestDiff = diff; best = i; }
-            if (offsets[i] > e.charIndex + (e.charLength || 10)) break;
-          }
-          if (best === -1 || best === lastHighlighted) return;
-          // Clear old, highlight new
-          if (lastHighlighted >= 0) wordSpans[lastHighlighted].classList.remove('active');
-          wordSpans[best].classList.add('active');
-          wordSpans[best].scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-          lastHighlighted = best;
-        };
-
-        utter.onend = utter.onerror = () => {
-          currentUtterance = null;
-          if (lastHighlighted >= 0 && wordSpans[lastHighlighted]) {
-            wordSpans[lastHighlighted].classList.remove('active');
-          }
-          unwrapWordsInBubble(bubble);
-          lastHighlighted = -1;
-          if (btn) { btn.textContent = '🔊 Listen'; btn.classList.remove('speaking'); btn.dataset.speaking = '0'; }
-        };
-
-        speechSynthesis.speak(utter);
+        if (autoReadEnabled || btn) {
+           speakText(msgToSpeak, btn, responseLang).then(() => {
+              if (bubble) {
+                bubble.style.border = 'none';
+                bubble.style.background = 'white';
+              }
+           });
+        }
       }, 300);
     }
   }
 }
 
-
-// ── TTS word-wrap helpers ────────────────────────────────────────────────────
+// ── TTS word-wrap helpers (OBSOLETE with Audio TTS but kept for reference) ────
 function wrapWordsInBubble(el) {
   // Only wrap text nodes that are direct or shallow children, skip buttons/links
   const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, {

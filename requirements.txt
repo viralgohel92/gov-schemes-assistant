@@ -24,6 +24,32 @@ beautifulsoup4
 schedule
 requests
 
+# --- Web & API Frameworks ---
+flask
+flask-mail
+fastapi
+uvicorn
+
+# --- Database & Persistence ---
+SQLAlchemy
+psycopg2-binary
+chromadb
+
+# --- AI & RAG (LangChain Stack) ---
+langchain
+langchain-community
+langchain-core
+langchain-mistralai
+langchain-chroma
+langchain-huggingface
+sentence-transformers
+
+# --- Scraping & Automation ---
+playwright
+beautifulsoup4
+schedule
+requests
+
 # --- Data & Logic ---
 pandas
 numpy
@@ -31,3 +57,7 @@ pydantic
 pydantic-settings
 python-dotenv
 tqdm
+groq
+twilio
+python-telegram-bot
+edge-tts
