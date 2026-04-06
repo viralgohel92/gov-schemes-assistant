@@ -32,6 +32,11 @@ class User(Base):
     category = Column(String)
     residence = Column(String, default="Gujarat")
     occupation = Column(String)
+    
+    # Bot Identifiers
+    telegram_chat_id = Column(String, unique=True, index=True)
+    whatsapp_number = Column(String, unique=True, index=True)
+    
     last_notified_at = Column(DateTime, default=datetime.datetime.utcnow)
     email_notifications = Column(Integer, default=1) # 1 for enabled, 0 for disabled
     deleted_notifications = Column(JSON, default=list) # List of dismissed notification IDs

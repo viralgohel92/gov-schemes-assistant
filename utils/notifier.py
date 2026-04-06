@@ -4,6 +4,8 @@ import logging
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from datetime import datetime
+import requests
+from twilio.rest import Client
 from dotenv import load_dotenv
 
 # Ensure repo root is on PYTHONPATH
@@ -51,6 +53,37 @@ def send_email(to_email, subject, body_html, body_text=None):
         return True
     except Exception as e:
         log.error(f"❌ Failed to send email to {to_email}: {e}")
+        return False
+
+def send_telegram_notification(chat_id, message):
+    """Sends a Telegram message to a specific chat_id."""
+    token = os.getenv("TELEGRAM_BOT_TOKEN")
+    if not token or not chat_id:
+        return False
+    url = f"https://api.telegram.org/bot{token}/sendMessage"
+    try:
+        # Telegram Markdown requires escaping some characters, but we'll use a simple version
+        response = requests.post(url, json={"chat_id": chat_id, "text": message})
+        return response.status_code == 200
+    except Exception as e:
+        log.error(f"❌ Telegram error ({chat_id}): {e}")
+        return False
+
+def send_whatsapp_notification(phone_number, message):
+    """Sends a WhatsApp message via Twilio."""
+    sid = os.getenv("TWILIO_ACCOUNT_SID")
+    auth_token = os.getenv("TWILIO_AUTH_TOKEN")
+    from_wa = os.getenv("TWILIO_WHATSAPP_NUMBER")
+    if not all([sid, auth_token, from_wa, phone_number]):
+        return False
+    try:
+        client = Client(sid, auth_token)
+        # Twilio WhatsApp numbers must be prefixed with 'whatsapp:'
+        target = phone_number if phone_number.startswith('whatsapp:') else f"whatsapp:{phone_number}"
+        client.messages.create(body=message, from_=from_wa, to=target)
+        return True
+    except Exception as e:
+        log.error(f"❌ WhatsApp error ({phone_number}): {e}")
         return False
 
 def broadcast_new_schemes(new_scheme_names):
@@ -117,6 +150,18 @@ def broadcast_new_schemes(new_scheme_names):
                 body_text=message
             )
             log.info(f"📧 Notification sent to {user.email}")
+            
+            # --- Telegram Alert ---
+            if user.telegram_chat_id:
+                tg_msg = f"📢 *{title}*\n\n{message}\n\nCheck now: http://127.0.0.1:5000/"
+                if send_telegram_notification(user.telegram_chat_id, tg_msg):
+                    log.info(f"📲 Telegram notification sent to {user.full_name}")
+            
+            # --- WhatsApp Alert ---
+            if user.whatsapp_number:
+                wa_msg = f"📢 *{title}*\n\n{message}\n\nCheck now: http://127.0.0.1:5000/"
+                if send_whatsapp_notification(user.whatsapp_number, wa_msg):
+                    log.info(f"💬 WhatsApp notification sent to {user.full_name}")
 
     except Exception as e:
         db.rollback()
