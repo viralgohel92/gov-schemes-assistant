@@ -38,6 +38,18 @@ def update_schema():
         except Exception as e:
             print(f"⚠️  Note (WA Column): {e}")
 
+        try:
+            conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS otp VARCHAR;"))
+            print("✅ Added 'otp' column.")
+        except Exception as e:
+            print(f"⚠️  Note (OTP Column): {e}")
+
+        try:
+            conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS otp_expiry TIMESTAMP;"))
+            print("✅ Added 'otp_expiry' column.")
+        except Exception as e:
+            print(f"⚠️  Note (OTP Expiry Column): {e}")
+
         conn.commit()
         print("✨ Database successfully updated!")
 

@@ -193,10 +193,108 @@ function closeAuthModal(e) {
 
 function switchAuthTab(tab) {
   const isLogin = tab === 'login';
+  const isSignup = tab === 'signup';
+  
   document.getElementById('login-form').classList.toggle('active', isLogin);
-  document.getElementById('signup-form').classList.toggle('active', !isLogin);
-  document.querySelectorAll('.tab-btn')[0].classList.toggle('active', isLogin);
-  document.querySelectorAll('.tab-btn')[1].classList.toggle('active', !isLogin);
+  document.getElementById('signup-form').classList.toggle('active', isSignup);
+  
+  // Hide forgot password forms when switching tabs
+  document.getElementById('forgot-email-form').classList.remove('active');
+  document.getElementById('forgot-otp-form').classList.remove('active');
+  document.getElementById('forgot-reset-form').classList.remove('active');
+  
+  // Update Tab Buttons
+  const tabBtns = document.querySelectorAll('.tab-btn');
+  if (tabBtns.length >= 2) {
+      tabBtns[0].classList.toggle('active', isLogin);
+      tabBtns[1].classList.toggle('active', isSignup);
+      // Show tabs if we are in login or signup
+      document.querySelector('.modal-tabs').style.display = (isLogin || isSignup) ? 'flex' : 'none';
+  }
+}
+
+function showForgotPassword(e) {
+    if (e) e.preventDefault();
+    document.getElementById('login-form').classList.remove('active');
+    document.getElementById('signup-form').classList.remove('active');
+    document.getElementById('forgot-email-form').classList.add('active');
+    document.querySelector('.modal-tabs').style.display = 'none';
+}
+
+async function handleForgotPasswordSubmit(e) {
+    if (e) e.preventDefault();
+    const email = document.getElementById('forgot-email-input').value;
+    if (!email) return alert("Please enter your email");
+
+    // Clear any previous attempts from UI if needed
+    
+    try {
+        const res = await fetch('/forgot_password', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email })
+        });
+        const data = await res.json();
+        if (res.ok) {
+            document.getElementById('forgot-email-form').classList.remove('active');
+            document.getElementById('forgot-otp-form').classList.add('active');
+        } else {
+            alert(data.error);
+        }
+    } catch (err) {
+        alert("Something went wrong. Please try again.");
+        console.error("Forgot Password Error:", err);
+    }
+}
+
+async function handleVerifyOTP() {
+    const email = document.getElementById('forgot-email-input').value;
+    const otp = document.getElementById('forgot-otp-input').value;
+    if (!otp || otp.length < 6) return alert("Please enter the 6-digit OTP");
+
+    try {
+        const res = await fetch('/verify_otp', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, otp })
+        });
+        const data = await res.json();
+        if (res.ok) {
+            document.getElementById('forgot-otp-form').classList.remove('active');
+            document.getElementById('forgot-reset-form').classList.add('active');
+        } else {
+            alert(data.error);
+        }
+    } catch (err) {
+        alert("Verification failed.");
+    }
+}
+
+async function handleResetPassword() {
+    const email = document.getElementById('forgot-email-input').value;
+    const otp = document.getElementById('forgot-otp-input').value;
+    const password = document.getElementById('forgot-new-password').value;
+    const confirm = document.getElementById('forgot-confirm-password').value;
+
+    if (!password) return alert("Please enter a new password");
+    if (password !== confirm) return alert("Passwords do not match");
+
+    try {
+        const res = await fetch('/reset_password', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, otp, password })
+        });
+        const data = await res.json();
+        if (res.ok) {
+            alert("Password reset successfully! You can now login.");
+            switchAuthTab('login');
+        } else {
+            alert(data.error);
+        }
+    } catch (err) {
+        alert("Failed to reset password.");
+    }
 }
 
 let currentUser = null;

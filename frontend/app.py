@@ -3,6 +3,8 @@ import uuid
 import os
 import sys
 import threading
+import random
+import datetime
 
 # Ensure repo root is on PYTHONPATH so `rag/` and `database/` imports work
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -270,6 +272,109 @@ def signup():
             rag_session["user_profile"] = None
 
         return jsonify({"status": "ok", "user": {"id": user.id, "name": user.full_name}})
+    except Exception as e:
+        db.rollback()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        db.close()
+
+@app.route("/forgot_password", methods=["POST"])
+def forgot_password():
+    data = request.json
+    email = data.get("email")
+    
+    if not email:
+        return jsonify({"error": "Email is required"}), 400
+        
+    db = SessionLocal()
+    try:
+        user = db.query(User).filter(User.email == email).first()
+        if not user:
+            return jsonify({"error": "No account found with this email"}), 404
+            
+        # Generate 6-digit OTP
+        otp = f"{random.randint(100000, 999999)}"
+        user.otp = otp
+        user.otp_expiry = datetime.datetime.utcnow() + datetime.timedelta(minutes=10)
+        db.commit()
+        
+        # Send OTP via Email
+        from utils.notifier import send_email
+        subject = "🔐 Your Yojana AI Verification Code"
+        html_body = f"""
+        <div style="font-family: Arial, sans-serif; border: 1px solid #ddd; padding: 20px; border-radius: 10px; max-width: 500px;">
+            <h2 style="color: #000080; text-align: center;">Reset Your Password</h2>
+            <p>Namaste,</p>
+            <p>You requested to reset your password for Yojana AI. Use the verification code below to proceed:</p>
+            <div style="background: #f4f4f4; padding: 15px; text-align: center; font-size: 24px; font-weight: bold; letter-spacing: 5px; color: #FF9933; border-radius: 5px; margin: 20px 0;">
+                {otp}
+            </div>
+            <p style="font-size: 12px; color: #777;">This code will expire in 10 minutes. If you did not request this, please ignore this email.</p>
+            <hr style="border: 0; border-top: 1px solid #eee;">
+            <p style="text-align: center; color: #138808; font-weight: bold;">Team Yojana AI</p>
+        </div>
+        """
+        
+        if send_email(email, subject, html_body):
+            return jsonify({"status": "ok", "message": "OTP sent to your email"})
+        else:
+            return jsonify({"error": "Failed to send email. Please try again later."}), 500
+            
+    except Exception as e:
+        db.rollback()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        db.close()
+
+@app.route("/verify_otp", methods=["POST"])
+def verify_otp():
+    data = request.json
+    email = data.get("email")
+    otp = data.get("otp")
+    
+    if not all([email, otp]):
+        return jsonify({"error": "Email and OTP are required"}), 400
+        
+    db = SessionLocal()
+    try:
+        user = db.query(User).filter(User.email == email).first()
+        if not user or user.otp != otp:
+            return jsonify({"error": "Invalid OTP"}), 401
+            
+        if user.otp_expiry < datetime.datetime.utcnow():
+            return jsonify({"error": "OTP has expired"}), 401
+            
+        return jsonify({"status": "ok", "message": "OTP verified"})
+    finally:
+        db.close()
+
+@app.route("/reset_password", methods=["POST"])
+def reset_password():
+    data = request.json
+    email = data.get("email")
+    otp = data.get("otp")
+    new_password = data.get("password")
+    
+    if not all([email, otp, new_password]):
+        return jsonify({"error": "All fields are required"}), 400
+        
+    db = SessionLocal()
+    try:
+        user = db.query(User).filter(User.email == email).first()
+        if not user or user.otp != otp:
+            return jsonify({"error": "Session expired or invalid. Please request a new OTP."}), 403
+            
+        if user.otp_expiry < datetime.datetime.utcnow():
+            return jsonify({"error": "OTP has expired"}), 403
+            
+        # Update password
+        user.password_hash = generate_password_hash(new_password)
+        # Clear OTP
+        user.otp = None
+        user.otp_expiry = None
+        db.commit()
+        
+        return jsonify({"status": "ok", "message": "Password reset successful. You can now login."})
     except Exception as e:
         db.rollback()
         return jsonify({"error": str(e)}), 500

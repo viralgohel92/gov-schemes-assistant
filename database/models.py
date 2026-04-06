@@ -41,6 +41,10 @@ class User(Base):
     email_notifications = Column(Integer, default=1) # 1 for enabled, 0 for disabled
     deleted_notifications = Column(JSON, default=list) # List of dismissed notification IDs
     
+    # Forgot Password
+    otp = Column(String)
+    otp_expiry = Column(DateTime)
+    
     chats = relationship("ChatHistory", back_populates="user")
 
 class ChatHistory(Base):

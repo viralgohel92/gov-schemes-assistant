@@ -120,6 +120,9 @@
         <label>Password</label>
         <input type="password" id="login-password" placeholder="••••••••">
       </div>
+      <div style="text-align: right; margin-top: -10px; margin-bottom: 15px;">
+        <a href="#" onclick="showForgotPassword(event)" style="font-size: 13px; color: var(--saffron); text-decoration: none;">Forgot Password?</a>
+      </div>
       <button class="btn-primary" onclick="handleLogin()">Login</button>
     </div>
 
@@ -185,6 +188,45 @@
         </div>
       </div>
       <button class="btn-primary" onclick="handleSignup()">Sign Up</button>
+    </div>
+
+    <!-- Forgot Password Flow -->
+    <div id="forgot-email-form" class="auth-form-container">
+      <h3 style="margin-bottom: 15px; color: var(--navy); font-family: 'Rajdhani'; border-bottom: 1px solid #eee; padding-bottom: 8px;">Reset Password</h3>
+      <div class="form-group">
+        <label>Enter your registered email</label>
+        <input type="email" id="forgot-email-input" placeholder="example@mail.com">
+      </div>
+      <button class="btn-primary" onclick="handleForgotPasswordSubmit(event)">Send OTP</button>
+      <div style="text-align: center; margin-top: 15px;">
+        <a href="#" onclick="switchAuthTab('login')" style="font-size: 14px; color: var(--muted); text-decoration: none;">← Back to Login</a>
+      </div>
+    </div>
+
+    <div id="forgot-otp-form" class="auth-form-container">
+      <h3 style="margin-bottom: 15px; color: var(--navy); font-family: 'Rajdhani'; border-bottom: 1px solid #eee; padding-bottom: 8px;">Verify OTP</h3>
+      <p style="font-size: 13px; color: #666; margin-bottom: 15px;">We've sent a 6-digit code to your email.</p>
+      <div class="form-group">
+        <label>Verification Code</label>
+        <input type="text" id="forgot-otp-input" placeholder="000000" maxlength="6" style="letter-spacing: 8px; text-align: center; font-size: 24px; font-weight: bold;">
+      </div>
+      <button class="btn-primary" onclick="handleVerifyOTP()">Verify & Continue</button>
+      <div style="text-align: center; margin-top: 15px;">
+        <a href="#" onclick="handleForgotPasswordSubmit(event)" style="font-size: 14px; color: var(--saffron); text-decoration: none;">Resend Code</a>
+      </div>
+    </div>
+
+    <div id="forgot-reset-form" class="auth-form-container">
+      <h3 style="margin-bottom: 15px; color: var(--navy); font-family: 'Rajdhani'; border-bottom: 1px solid #eee; padding-bottom: 8px;">Create New Password</h3>
+      <div class="form-group">
+        <label>New Password</label>
+        <input type="password" id="forgot-new-password" placeholder="••••••••">
+      </div>
+      <div class="form-group">
+        <label>Confirm New Password</label>
+        <input type="password" id="forgot-confirm-password" placeholder="••••••••">
+      </div>
+      <button class="btn-primary" onclick="handleResetPassword()">Reset Password</button>
     </div>
   </div>
 </div>

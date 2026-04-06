@@ -26,8 +26,8 @@ logging.basicConfig(level=logging.INFO)
 def send_email(to_email, subject, body_html, body_text=None):
     """Sends a single HTML email using SMTP."""
     smtp_server = os.getenv("SMTP_SERVER", "smtp.gmail.com")
-    smtpnt(os.getenv("SMTP_PORT", 587))
-    smtp_user_port = i = os.getenv("SMTP_USERNAME")
+    smtp_port = int(os.getenv("SMTP_PORT", 587))
+    smtp_user = os.getenv("SMTP_USERNAME")
     smtp_pass = os.getenv("SMTP_PASSWORD")
     smtp_sender = os.getenv("SMTP_SENDER", "Yojana AI <notifications@yojana.ai>")
 
