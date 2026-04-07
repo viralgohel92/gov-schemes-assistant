@@ -50,9 +50,10 @@ def _warmup():
         print(f"⚠️  Warmup failed (non-fatal): {e}")
 
 # ── Background Threading ───────────────────────────────────────────────────
-# Run heavy/blocking tasks in background threads so Flask starts instantly.
-threading.Thread(target=_warmup, daemon=True).start()
-threading.Thread(target=start_telegram_bot, daemon=True).start()
+# NOTE: Background threads are disabled for Vercel/Serverless deployment.
+# Warmup and Telegram Polling do not work in short-lived serverless functions.
+# threading.Thread(target=_warmup, daemon=True).start()
+# threading.Thread(target=start_telegram_bot, daemon=True).start()
 
 
 @app.route("/me")
