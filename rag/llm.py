@@ -1,9 +1,7 @@
 import os
-from langchain_community.vectorstores import Chroma, SupabaseVectorStore
 from langchain_mistralai import ChatMistralAI, MistralAIEmbeddings
 from pydantic import BaseModel, Field
 from typing import List, Optional
-from supabase.client import create_client
 
 # -------------------------------------------------
 # Schemas
@@ -88,17 +86,32 @@ def get_vector_db():
         supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
         
         if supabase_url and supabase_key:
-            print("🌐 Connecting to Supabase Vector Store...")
-            supabase_client = create_client(supabase_url, supabase_key)
-            _vector_db = SupabaseVectorStore(
-                client=supabase_client,
-                embedding=get_embedding_model(),
-                table_name="documents",
-                query_name="match_documents",
-            )
-        else:
+            print("🌐 Connecting to Supabase Vector Store via API...")
+            from supabase.client import create_client
+            from langchain_community.vectorstores import SupabaseVectorStore
+            
+            try:
+                supabase_client = create_client(supabase_url, supabase_key)
+                _vector_db = SupabaseVectorStore(
+                    client=supabase_client,
+                    embedding=get_embedding_model(),
+                    table_name="documents",
+                    query_name="match_documents",
+                )
+                print("✅ Supabase Vector Store ready.")
+            except Exception as e:
+                print(f"⚠️ Warning: Supabase client failed: {e}. Falling back to local.")
+        
+        if _vector_db is None:
             print("📂 Using local Chroma Vector Store (Fallback)...")
-            _vector_db = Chroma(persist_directory="vector_db", embedding_function=get_embedding_model())
+            try:
+                from langchain_community.vectorstores import Chroma
+                # Support both relative and absolute paths for vector_db
+                persist_dir = os.path.join(os.getcwd(), "vector_db")
+                _vector_db = Chroma(persist_directory=persist_dir, embedding_function=get_embedding_model())
+            except Exception as e:
+                print(f"❌ ChromaDB fallback failed: {e}")
+                return None
     return _vector_db
 
 def get_llm():

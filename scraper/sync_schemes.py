@@ -44,6 +44,9 @@ if REPO_ROOT_FOR_AUTH not in sys.path:
     sys.path.insert(0, REPO_ROOT_FOR_AUTH)
 
 from utils.notifier import broadcast_new_schemes
+from database.db import SessionLocal, engine
+from database.models import Scheme
+from rag.llm import get_vector_db, get_embedding_model
 from dotenv import load_dotenv
 load_dotenv()
 
@@ -55,9 +58,6 @@ VECTOR_DB_PATH  = os.path.join(PROJECT_ROOT, "vector_db")
 LOGS_DIR        = os.path.join(PROJECT_ROOT, "logs")
 RAW_CSV         = os.path.join(PROJECT_ROOT, "data", "raw", "gujarat_schemes.csv")
 PROCESSED_CSV   = os.path.join(PROJECT_ROOT, "data", "processed", "scraped_schemes.csv")
-
-# ── Fix 4: Grace period tracker file ─────────────────────────────────────────
-MISSING_TRACKER = os.path.join(PROJECT_ROOT, "logs", "missing_tracker.json")
 
 # ── Fix 4: How many consecutive runs before deleting ─────────────────────────
 GRACE_PERIOD    = 3
@@ -109,69 +109,46 @@ log = logging.getLogger("sync")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  FIX 4 — Missing tracker helpers
-#  Saves { slug: missing_count } to logs/missing_tracker.json
-#  A scheme is only deleted after missing GRACE_PERIOD times in a row
+#  FIX 4 — Missing tracker helpers (Database version)
 # ══════════════════════════════════════════════════════════════════════════════
 
-def load_missing_tracker() -> dict:
-    """Load missing tracker from JSON file. Returns {} if not found."""
-    if not os.path.exists(MISSING_TRACKER):
-        return {}
-    try:
-        with open(MISSING_TRACKER, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except Exception:
-        return {}
-
-
-def save_missing_tracker(tracker: dict):
-    """Save missing tracker to JSON file."""
-    try:
-        os.makedirs(os.path.dirname(MISSING_TRACKER), exist_ok=True)
-        with open(MISSING_TRACKER, "w", encoding="utf-8") as f:
-            json.dump(tracker, f, indent=2, ensure_ascii=False)
-    except Exception as e:
-        log.warning(f"⚠️  Could not save missing tracker: {e}")
-
-
-def update_missing_tracker(tracker: dict, removed_slugs: set, live_slugs: set) -> tuple:
+def update_missing_tracker_db(session, removed_slugs: set, live_slugs: set) -> tuple:
     """
-    Update tracker counts for this run.
-
-    Returns:
-        confirmed_delete  — slugs that have been missing >= GRACE_PERIOD times → delete now
-        still_waiting     — slugs missing but not yet at threshold → keep waiting
-        tracker           — updated tracker dict
+    Update tracker counts in the database for this run.
     """
     confirmed_delete = set()
     still_waiting    = set()
 
-    # Increment count for slugs missing this run
     for slug in removed_slugs:
-        tracker[slug] = tracker.get(slug, 0) + 1
-        count = tracker[slug]
-
-        if count >= GRACE_PERIOD:
+        # Search for scheme by slug in its application_link
+        scheme = session.query(Scheme).filter(Scheme.application_link.contains(slug)).first()
+        if not scheme: continue
+        
+        scheme.missing_count += 1
+        if scheme.missing_count >= GRACE_PERIOD:
             confirmed_delete.add(slug)
-            log.info(f"   🚨 '{slug}' missing {count}/{GRACE_PERIOD} runs → confirmed delete")
+            log.info(f"   🚨 '{slug}' missing {scheme.missing_count}/{GRACE_PERIOD} runs → confirmed delete")
         else:
             still_waiting.add(slug)
-            log.info(f"   ⏳ '{slug}' missing {count}/{GRACE_PERIOD} runs → waiting...")
+            log.info(f"   ⏳ '{slug}' missing {scheme.missing_count}/{GRACE_PERIOD} runs → waiting...")
 
-    # Reset count for slugs that REAPPEARED (website was just unstable)
-    reappeared = set(tracker.keys()) - removed_slugs - confirmed_delete
-    for slug in reappeared:
-        if slug in tracker:
-            old_count = tracker.pop(slug)
-            if old_count > 0:
-                log.info(f"   ✅ '{slug}' reappeared after {old_count} miss(es) → reset")
+    # Reset count for slugs that REAPPEARED
+    # (Any scheme with missing_count > 0 that is NOT in the removed_slugs list)
+    reappeared_schemes = session.query(Scheme).filter(Scheme.missing_count > 0).all()
+    
+    for scheme in reappeared_schemes:
+        match = False
+        for s in live_slugs:
+            if s in scheme.application_link:
+                match = True
+                break
+        
+        if match:
+            log.info(f"   ✅ '{scheme.scheme_name}' reappeared → reset missing count")
+            scheme.missing_count = 0
 
-    # Remove confirmed deletes from tracker (no need to track anymore)
-    for slug in confirmed_delete:
-        tracker.pop(slug, None)
-
-    return confirmed_delete, still_waiting, tracker
+    session.commit()
+    return confirmed_delete, still_waiting
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -342,32 +319,25 @@ def scrape_live_scheme_list() -> dict:
 #  STEP 2 — Read what is already in ChromaDB
 # ══════════════════════════════════════════════════════════════════════════════
 
-def get_db_scheme_slugs(db_path: str) -> dict:
-    """Returns { slug: doc_text } for every scheme in ChromaDB."""
-    sqlite_path = os.path.join(db_path, "chroma.sqlite3")
-    if not os.path.exists(sqlite_path):
-        log.warning(f"ChromaDB not found at {sqlite_path} — treating DB as empty.")
+def get_db_scheme_slugs():
+    """Returns { slug: doc_text } for every scheme in the Supabase relational DB."""
+    session = SessionLocal()
+    try:
+        schemes = session.query(Scheme).all()
+        db_schemes = {}
+        for s in schemes:
+            if not s.application_link: continue
+            slug = s.application_link.rstrip('/').split("/")[-1]
+            # Use description/details as proxy for doc_text
+            db_schemes[slug] = s.description or ""
+        
+        log.info(f"   📦 Supabase DB currently has {len(db_schemes)} schemes")
+        return db_schemes
+    except Exception as e:
+        log.error(f"❌ Error reading Supabase DB: {e}")
         return {}
-
-    conn = sqlite3.connect(sqlite_path)
-    cur  = conn.cursor()
-    cur.execute("SELECT string_value FROM embedding_fulltext_search")
-    rows = cur.fetchall()
-    conn.close()
-
-    db_schemes = {}
-    for (text,) in rows:
-        link_m = re.search(r"Link\s*:(.*)", text)
-        if not link_m:
-            continue
-        link = link_m.group(1).strip()
-        m = re.search(r"/schemes/([^/\s]+)", link)
-        if m:
-            slug = m.group(1).strip()
-            db_schemes[slug] = text
-
-    log.info(f"   📦 ChromaDB currently has {len(db_schemes)} schemes")
-    return db_schemes
+    finally:
+        session.close()
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -567,27 +537,76 @@ def _build_doc_text(scheme: dict, details: dict) -> str:
     )
 
 
-def add_to_vector_db(vector_db, scheme: dict, details: dict):
-    doc_text = _build_doc_text(scheme, details)
+def add_to_cloud_db(scheme: dict, details: dict):
+    """Saves scheme to Relational DB and Vector DB on Supabase."""
+    session = SessionLocal()
     try:
-        vector_db.add_texts([doc_text])
-        log.info(f"   ✅ Added to ChromaDB: {scheme['scheme_name']}")
-    except Exception as e:
-        log.error(f"   ❌ Failed to add {scheme['scheme_name']}: {e}")
-
-
-def delete_from_vector_db(vector_db, slug: str, scheme_name: str):
-    try:
-        results = vector_db._collection.get(
-            where_document={"$contains": f"/schemes/{slug}"}
-        )
-        if results and results.get("ids"):
-            vector_db._collection.delete(ids=results["ids"])
-            log.info(f"   🗑️  Deleted from ChromaDB: {scheme_name}")
+        # 1. Add/Update in Relational DB
+        existing = session.query(Scheme).filter(Scheme.application_link == scheme['scheme_link']).first()
+        if existing:
+            existing.description = str(details.get('details', ''))
+            existing.benefits = str(details.get('benefits', ''))
+            existing.eligibility = str(details.get('eligibility', ''))
+            existing.application_process = str(details.get('application_process', ''))
+            existing.documents_required = str(details.get('documents_required', ''))
+            existing.missing_count = 0
+            existing.last_updated_at = datetime.utcnow()
         else:
-            log.warning(f"   ⚠️  Not found in ChromaDB: {scheme_name}")
+            new_scheme = Scheme(
+                scheme_name=scheme['scheme_name'],
+                application_link=scheme['scheme_link'],
+                state=scheme.get('state', STATE_NAME),
+                category=scheme.get('category', ''),
+                description=str(details.get('details', '')),
+                benefits=str(details.get('benefits', '')),
+                eligibility=str(details.get('eligibility', '')),
+                application_process=str(details.get('application_process', '')),
+                documents_required=str(details.get('documents_required', '')),
+                missing_count=0
+            )
+            session.add(new_scheme)
+        session.commit()
+        log.info(f"   ✅ Saved to Relational DB: {scheme['scheme_name']}")
+
+        # 2. Add to Vector DB
+        vector_db = get_vector_db()
+        if vector_db:
+            doc_text = _build_doc_text(scheme, details)
+            vector_db.add_texts([doc_text])
+            log.info(f"   ✅ Added to Vector Index: {scheme['scheme_name']}")
+    except Exception as e:
+        log.error(f"   ❌ Failed to sync {scheme['scheme_name']}: {e}")
+        session.rollback()
+    finally:
+        session.close()
+
+
+def delete_from_cloud_db(slug: str, scheme_name: str):
+    """Deletes scheme from Relational DB and Vector Index."""
+    session = SessionLocal()
+    try:
+        # 1. Delete from Relational DB
+        session.query(Scheme).filter(Scheme.application_link.contains(slug)).delete(synchronize_session=False)
+        session.commit()
+        log.info(f"   🗑️  Deleted from Relational DB: {scheme_name}")
+
+        # 2. Delete from Vector Index
+        vector_db = get_vector_db()
+        if vector_db:
+            from supabase.client import create_client
+            supabase_url = os.getenv("SUPABASE_URL")
+            supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+            supabase_client = create_client(supabase_url, supabase_key)
+            
+            # Using direct SQL delete via RPC if possible or via the client
+            # Langchain's SupabaseVectorStore delete is IDs-based, so we filter by metadata
+            supabase_client.table("documents").delete().filter("content", "ilike", f"%{slug}%").execute()
+            log.info(f"   🗑️  Deleted from Vector Index: {scheme_name}")
     except Exception as e:
         log.error(f"   ❌ Failed to delete {scheme_name}: {e}")
+        session.rollback()
+    finally:
+        session.close()
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -597,22 +616,8 @@ def delete_from_vector_db(vector_db, slug: str, scheme_name: str):
 def run_sync():
     start_time = datetime.now()
     log.info("=" * 65)
-    log.info(f"🚀 Yojana AI — Sync started at {start_time.strftime('%Y-%m-%d %H:%M:%S')}")
+    log.info(f"🚀 Yojana AI — Cloud Sync started at {start_time.strftime('%Y-%m-%d %H:%M:%S')}")
     log.info("=" * 65)
-
-    # ── Load ChromaDB ────────────────────────────────────────────────────────
-    log.info("⏳ Loading ChromaDB and embedding model …")
-    from langchain_chroma import Chroma
-    from langchain_huggingface import HuggingFaceEmbeddings
-
-    embeddings = HuggingFaceEmbeddings(
-        model_name="sentence-transformers/all-MiniLM-L6-v2"
-    )
-    vector_db = Chroma(
-        persist_directory=VECTOR_DB_PATH,
-        embedding_function=embeddings,
-    )
-    log.info("✅ ChromaDB loaded")
 
     # ── Step 1: Scrape live scheme list ──────────────────────────────────────
     live_schemes = scrape_live_scheme_list()
@@ -625,15 +630,14 @@ def run_sync():
     if scraped_count < SCRAPE_MIN_THRESHOLD:
         log.warning("=" * 65)
         log.warning(f"⚠️  SCRAPE INCOMPLETE — only got {scraped_count} schemes!")
-        log.warning(f"   Expected at least {SCRAPE_MIN_THRESHOLD} (website has ~643)")
-        log.warning(f"   Skipping sync to avoid false deletes. Will retry next run.")
+        log.warning(f"   Skipping sync to avoid false deletes.")
         log.warning("=" * 65)
         return
 
-    log.info(f"   ✅ Scrape validated: {scraped_count} schemes (threshold: {SCRAPE_MIN_THRESHOLD})")
+    log.info(f"   ✅ Scrape validated: {scraped_count} schemes")
 
-    # ── Step 2: Get DB scheme slugs ──────────────────────────────────────────
-    db_slugs    = get_db_scheme_slugs(VECTOR_DB_PATH)
+    # ── Step 2: Get DB scheme slugs (from Supabase) ──────────────────────────
+    db_slugs    = get_db_scheme_slugs()
     live_slugs  = set(live_schemes.keys())
     db_slug_set = set(db_slugs.keys())
 
@@ -642,19 +646,15 @@ def run_sync():
 
     log.info(f"\n📊 Sync summary:")
     log.info(f"   Live on website : {len(live_slugs)}")
-    log.info(f"   In ChromaDB     : {len(db_slug_set)}")
+    log.info(f"   In Cloud DB     : {len(db_slug_set)}")
     log.info(f"   ➕ New to add   : {len(new_slugs)}")
-    log.info(f"   ➖ Missing       : {len(removed_slugs)} (checking grace period...)")
+    log.info(f"   ➖ Missing       : {len(removed_slugs)}")
 
-    # ── Fix 4: Grace period — check missing tracker ───────────────────────────
-    tracker = load_missing_tracker()
-
-    confirmed_delete, still_waiting, tracker = update_missing_tracker(
-        tracker, removed_slugs, live_slugs
+    # ── Fix 4: Grace period — check database tracker ──────────────────────────
+    session = SessionLocal()
+    confirmed_delete, still_waiting = update_missing_tracker_db(
+        session, removed_slugs, live_slugs
     )
-
-    # Save updated tracker
-    save_missing_tracker(tracker)
 
     log.info(f"\n⏳ Grace period status:")
     log.info(f"   🚨 Confirmed delete (missing {GRACE_PERIOD}x) : {len(confirmed_delete)}")
@@ -664,41 +664,19 @@ def run_sync():
     if confirmed_delete:
         log.info(f"\n🗑️  Deleting {len(confirmed_delete)} confirmed removed scheme(s) …")
         for slug in confirmed_delete:
-            doc_text = db_slugs.get(slug, "")
-            name_m   = re.search(r"Scheme name\s*:(.*)", doc_text)
-            name     = name_m.group(1).strip() if name_m else slug
-
-            delete_from_vector_db(vector_db, slug, name)
-            delete_from_raw_csv(slug, name)
-            delete_from_processed_csv(slug, name)
+            scheme_name = slug.replace("-", " ").title()
+            delete_from_cloud_db(slug, scheme_name)
     else:
         log.info("\n✅ No confirmed deletions this run.")
-
-    if still_waiting:
-        log.info(f"\n⏳ Waiting schemes (will delete if missing {GRACE_PERIOD} times):")
-        for slug in still_waiting:
-            count = tracker.get(slug, 0)
-            log.info(f"   • {slug}  [{count}/{GRACE_PERIOD}]")
 
     # ── Step 4: Add new schemes ───────────────────────────────────────────────
     if new_slugs:
         log.info(f"\n➕ Adding {len(new_slugs)} new scheme(s) …")
 
         from playwright.sync_api import sync_playwright
-
         with sync_playwright() as p:
-            browser = p.chromium.launch(
-                headless=True,
-                args=["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu"],
-            )
-            bpage = browser.new_context(
-                user_agent=(
-                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                    "AppleWebKit/537.36 (KHTML, like Gecko) "
-                    "Chrome/124.0.0.0 Safari/537.36"
-                ),
-                viewport={"width": 1280, "height": 900},
-            ).new_page()
+            browser = p.chromium.launch(headless=True)
+            bpage = browser.new_page()
 
             added  = 0
             failed = []
@@ -709,44 +687,37 @@ def run_sync():
 
                 if not scheme.get("scheme_link"):
                     log.warning("   ⚠️  No link — skipping")
-                    failed.append(scheme["scheme_name"])
                     continue
 
                 details = scrape_scheme_detail(bpage, scheme)
-
-                add_to_vector_db(vector_db, scheme, details)
-                add_to_raw_csv(scheme)
-                add_to_processed_csv(scheme, details)
-
-                added += 1
+                if details:
+                    add_to_cloud_db(scheme, details)
+                    added += 1
+                else:
+                    failed.append(scheme["scheme_name"])
+                
                 time.sleep(BATCH_DELAY)
 
             browser.close()
 
         log.info(f"\n   ✅ Added: {added}  |  ❌ Failed: {len(failed)}")
-        if failed:
-            for f in failed:
-                log.info(f"      - {f}")
         
-        # ── Trigger Broadcast Notification ────────────────────────────────────
         if added > 0:
             new_names = [live_schemes[s]["scheme_name"] for s in sorted(new_slugs) if s in live_schemes]
-            log.info(f"\n📢 Triggering broadcast for {added} new schemes...")
             broadcast_new_schemes(new_names)
     else:
         log.info("\n✅ No new schemes to add.")
 
+    session.close()
+    
     # ── Done ─────────────────────────────────────────────────────────────────
-    end_time  = datetime.now()
-    elapsed   = (end_time - start_time).seconds
-    mins, sec = divmod(elapsed, 60)
-
     log.info("\n" + "=" * 65)
-    log.info(f"🎉 Sync complete in {mins}m {sec}s")
-    log.info(f"   ➕ Added    : {len(new_slugs)} new schemes")
-    log.info(f"   🗑️  Deleted  : {len(confirmed_delete)} confirmed schemes")
-    log.info(f"   ⏳ Watching : {len(still_waiting)} schemes (grace period)")
+    log.info(f"🎉 Cloud Sync complete")
     log.info("=" * 65)
+
+
+if __name__ == "__main__":
+    run_sync()
 
 
 # ── Entry point ───────────────────────────────────────────────────────────────
