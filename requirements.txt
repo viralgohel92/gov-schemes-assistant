@@ -31,3 +31,5 @@ pydantic-settings
 tqdm
 aiohttp
 aiohttp-retry
+pandas
+playwright
