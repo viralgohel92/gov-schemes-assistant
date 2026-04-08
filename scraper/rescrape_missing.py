@@ -168,30 +168,45 @@ def update_cloud_db(scheme_id: int, fields: dict, doc_text: str):
         # 1. Update Relational DB
         scheme = session.query(Scheme).filter(Scheme.id == scheme_id).first()
         if scheme:
-            scheme.description = fields.get("description", scheme.description)
-            scheme.benefits = fields.get("benefits", scheme.benefits)
-            scheme.eligibility = fields.get("eligibility", scheme.eligibility)
-            scheme.application_process = fields.get("application_process", scheme.application_process)
-            scheme.documents_required = fields.get("documents_required", scheme.documents_required)
-            scheme.missing_count = 0 # Reset if found
+            # Always stringify — LLM may return dicts/lists for some fields
+            def _to_str(val, fallback):
+                if val is None:
+                    return fallback
+                if isinstance(val, (dict, list)):
+                    return json.dumps(val, ensure_ascii=False)
+                return str(val)
+
+            scheme.description        = _to_str(fields.get("description"),        scheme.description)
+            scheme.benefits           = _to_str(fields.get("benefits"),            scheme.benefits)
+            scheme.eligibility        = _to_str(fields.get("eligibility"),         scheme.eligibility)
+            scheme.application_process= _to_str(fields.get("application_process"),scheme.application_process)
+            scheme.documents_required = _to_str(fields.get("documents_required"),  scheme.documents_required)
+            scheme.missing_count      = 0
             session.commit()
             print(f"  💾 Relational DB updated")
 
-        # 2. Update Vector DB (Delete old and add new)
-        vector_db = get_vector_db()
-        if vector_db:
-            from supabase.client import create_client
-            supabase_url = os.getenv("SUPABASE_URL")
-            supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
-            supabase_client = create_client(supabase_url, supabase_key)
-            
-            # Delete old documents referencing this scheme
-            # We use the name as a proxy for filtering in this script
-            supabase_client.table("documents").delete().filter("content", "ilike", f"%Scheme name :{scheme.scheme_name}%").execute()
-            
-            # Add updated document
-            vector_db.add_texts([doc_text])
-            print(f"  ✅ Vector Index updated")
+        # 2. Update Vector DB (Delete old + add new)
+        try:
+            vector_db = get_vector_db()
+            if vector_db:
+                from supabase.client import create_client
+                supabase_url = os.getenv("SUPABASE_URL")
+                supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+                supabase_client = create_client(supabase_url, supabase_key)
+
+                # Delete old vectors for this scheme (best-effort, ignore errors)
+                try:
+                    supabase_client.table("documents").delete().filter(
+                        "content", "ilike", f"%Scheme name :{scheme.scheme_name}%"
+                    ).execute()
+                except Exception as del_e:
+                    pass  # Non-critical — old vector will just become stale
+
+                # Add updated document
+                vector_db.add_texts([doc_text])
+                print(f"  ✅ Vector Index updated")
+        except Exception as vec_e:
+            print(f"  ⚠️  Vector update skipped: {vec_e}")
 
     except Exception as e:
         print(f"  ⚠️  Cloud DB update error: {e}")
