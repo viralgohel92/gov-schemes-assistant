@@ -16,6 +16,9 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Debug List Files
+        run: ls -R
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -24,9 +27,9 @@ jobs:
 
       - name: Install Dependencies
         run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          playwright install chromium
+          python3 -m pip install --upgrade pip
+          python3 -m pip install -r requirements.txt
+          python3 -m playwright install chromium
 
       - name: Run Sync Schemes
         env:
@@ -44,9 +47,8 @@ jobs:
           DB_PORT: ${{ secrets.DB_PORT }}
           DB_NAME: ${{ secrets.DB_NAME }}
         run: |
-          # Ensure repository root is in PYTHONPATH
           export PYTHONPATH=$PYTHONPATH:.
-          python scraper/sync_schemes.py
+          python3 scraper/sync_schemes.py
 
       - name: Run Rescrape Missing
         env:
@@ -62,5 +64,4 @@ jobs:
           DB_NAME: ${{ secrets.DB_NAME }}
         run: |
           export PYTHONPATH=$PYTHONPATH:.
-          # Only run if needed, currently sync_schemes does most of it
-          python scraper/rescrape_missing.py || echo "Rescrape failed or skipped"
+          python3 scraper/rescrape_missing.py || echo "Rescrape failed or skipped"
