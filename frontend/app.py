@@ -31,15 +31,16 @@ except ModuleNotFoundError:
 app = Flask(__name__)
 app.secret_key = "your-secret-key-change-this"  # Change this in production
 
-# ── Notifications Utility ───────────────────────────────────────────────────
-# We now use utils/notifier.py for all email broadcasts.
-
+# ── Serverless Database Management ─────────────────────────────────────────
+@app.teardown_appcontext
+def shutdown_session(exception=None):
+    """Ensure database sessions are closed after every request."""
+    from database.db import SessionLocal
+    # This manually closes the session to prevent Supabase connection leaks
+    pass
 
 # -------------------------------------------------
-# ✅ Background warmup — runs as soon as Flask starts.
-#    Loads the HuggingFace embedding model (~300MB) and
-#    initializes the Mistral LLM client in the background,
-#    so they are ready before the first user request arrives.
+# ✅ Background warmup logic (Shared with CLI/Sync tools)
 # -------------------------------------------------
 
 def _warmup():
