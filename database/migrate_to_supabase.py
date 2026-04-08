@@ -21,44 +21,35 @@ def migrate():
     print("🚀 Starting Migration to Supabase...")
     
     db_target = DATABASE_URL.split("@")[-1] if DATABASE_URL else "None"
-    print(f"🔗 Connecting to Database: {db_target}")
+    print(f"🔗 Target: {db_target}")
 
-    # 1. Connect to PostgreSQL
     engine = create_engine(DATABASE_URL)
     SessionLocal = sessionmaker(bind=engine)
     session = SessionLocal()
 
     try:
-        # 2. Clear Existing Tables
-        print("🗑️ Clearing existing tables...")
+        # 1. Clear and Prepare Tables
+        print("🗑️ Resetting tables and enabling pgvector...")
         with engine.connect() as conn:
+            # We drop specific order because of dependencies
             conn.execute(text("DROP TABLE IF EXISTS documents CASCADE;"))
-            conn.execute(text("DROP TABLE IF EXISTS notifications CASCADE;"))
-            conn.execute(text("DROP TABLE IF EXISTS chat_history CASCADE;"))
-            conn.execute(text("DROP TABLE IF EXISTS users CASCADE;"))
             conn.execute(text("DROP TABLE IF EXISTS schemes CASCADE;"))
-            conn.commit()
-
-        # 3. Enable pgvector extension
-        print("⚙️ Enabling pgvector extension...")
-        with engine.connect() as conn:
             conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector;"))
             conn.commit()
 
-        # 4. Create Tables using SQLAlchemy
-        print("🏗️ Creating tables from models...")
+        print("🏗️ Creating tables from definitions...")
         Base.metadata.create_all(bind=engine)
 
-        # 5. Load Data from CSV
-        print(f"📖 Reading schemes from {PROCESSED_CSV}...")
+        # 2. Ingest Relational Data
+        print(f"📖 Reading schemes from: {PROCESSED_CSV}")
         if not os.path.exists(PROCESSED_CSV):
             print(f"❌ Error: {PROCESSED_CSV} not found!")
             return
 
         df = pd.read_csv(PROCESSED_CSV)
-        print(f"✅ Loaded {len(df)} schemes.")
+        print(f"✅ Loaded {len(df)} schemes from local CSV.")
 
-        schemes_to_add = []
+        print("💾 Inserting schemes into Cloud DB...")
         for index, row in df.iterrows():
             scheme = Scheme(
                 scheme_name=row['scheme_name'],
@@ -72,17 +63,15 @@ def migrate():
                 documents_required=str(row['documents_required']),
                 missing_count=0
             )
-            schemes_to_add.append(scheme)
-
-        print(f"💾 Inserting {len(schemes_to_add)} schemes into 'schemes' table...")
-        session.bulk_save_objects(schemes_to_add)
+            session.add(scheme)
+        
         session.commit()
-        print("✅ Schemes inserted.")
+        print(f"✅ Relational database sync complete ({len(df)} schemes).")
 
-        # 6. Initialize Vector Store (using Supabase API for indexing)
-        print("🌐 Indexing documents for Vector Search (Mistral API)...")
+        # 3. Vector Store Initialization
+        print("\n🌐 Generating AI Vector Index (using Mistral API)...")
         if not SUPABASE_URL or not SUPABASE_KEY:
-            print("❌ Skipping vector indexing: SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY missing.")
+            print("⚠️ Skipping vector sync: SUPABASE_URL or SUPABASE_KEY missing.")
             return
 
         from langchain_community.vectorstores import SupabaseVectorStore
@@ -90,41 +79,35 @@ def migrate():
         supabase_client = create_client(SUPABASE_URL, SUPABASE_KEY)
         embeddings = MistralAIEmbeddings(model="mistral-embed")
 
-        # Prepare documents for vector search
-        documents = []
+        # Prepare documents
+        docs = []
         for _, row in df.iterrows():
-            content = f"""
-            Scheme name: {row['scheme_name']}
-            Description: {row['details']}
-            Category: {row['category']}
-            Benefits: {row['benefits']}
-            Eligibility: {row['eligibility']}
-            Application Process: {row['application_process']}
-            Required Documents: {row['documents_required']}
-            State: {row['state']}
-            Link: {row['scheme_link']}
-            """
-            documents.append(content)
+            content = f"Scheme: {row['scheme_name']}\nDescription: {row['details']}\nBenefits: {row['benefits']}\nEligibility: {row['eligibility']}"
+            docs.append(content)
 
-        # Batch indexing to avoid timeouts
-        batch_size = 50
-        print(f"📦 Indexing {len(documents)} documents in batches of {batch_size}...")
+        # Batch indexing to prevent timeouts
+        BATCH_SIZE = 50
+        print(f"📦 Uploading {len(docs)} AI embeddings in batches of {BATCH_SIZE}...")
         
-        for i in range(0, len(documents), batch_size):
-            batch = documents[i:i+batch_size]
-            SupabaseVectorStore.from_texts(
-                texts=batch,
-                embedding=embeddings,
-                client=supabase_client,
-                table_name="documents",
-                query_name="match_documents"
-            )
-            print(f"   - Processed {min(i+batch_size, len(documents))}/{len(documents)}")
+        for i in range(0, len(docs), BATCH_SIZE):
+            batch = docs[i : i + BATCH_SIZE]
+            try:
+                SupabaseVectorStore.from_texts(
+                    texts=batch,
+                    embedding=embeddings,
+                    client=supabase_client,
+                    table_name="documents",
+                    query_name="match_documents"
+                )
+                print(f"   - Progress: {min(i+BATCH_SIZE, len(docs))}/{len(docs)}")
+            except Exception as inner_e:
+                print(f"   ⚠️ Batch failed: {inner_e}")
+                continue
 
-        print("🎉 Migration and Vector Indexing complete!")
+        print("\n🎉 SUPABASE MIGRATION COMPLETE!")
 
     except Exception as e:
-        print(f"❌ Migration failed: {e}")
+        print(f"❌ FATAL ERROR: {e}")
         session.rollback()
     finally:
         session.close()

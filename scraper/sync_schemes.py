@@ -567,17 +567,23 @@ def add_to_cloud_db(scheme: dict, details: dict):
                 missing_count=0
             )
             session.add(new_scheme)
+        
         session.commit()
-        log.info(f"   ✅ Saved to Relational DB: {scheme['scheme_name']}")
+        log.info(f"   ✅ Relational DB updated: {scheme['scheme_name']}")
 
-        # 2. Add to Vector DB
-        vector_db = get_vector_db()
-        if vector_db:
-            doc_text = _build_doc_text(scheme, details)
-            vector_db.add_texts([doc_text])
-            log.info(f"   ✅ Added to Vector Index: {scheme['scheme_name']}")
+        # 2. Add to Vector DB (Cloud Index)
+        try:
+            vector_db = get_vector_db()
+            if vector_db:
+                doc_text = _build_doc_text(scheme, details)
+                vector_db.add_texts([doc_text])
+                log.info(f"   ✅ Vector Index updated: {scheme['scheme_name']}")
+        except Exception as vec_e:
+            log.warning(f"   ⚠️ Vector Sync failed for {scheme['scheme_name']}: {vec_e}")
+            log.warning("      (Continuing with relational data only)")
+
     except Exception as e:
-        log.error(f"   ❌ Failed to sync {scheme['scheme_name']}: {e}")
+        log.error(f"   ❌ FATAL DB error for {scheme['scheme_name']}: {e}")
         session.rollback()
     finally:
         session.close()
