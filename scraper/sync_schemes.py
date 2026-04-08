@@ -93,6 +93,8 @@ PROCESSED_CSV_FIELDS = ["scheme_name", "scheme_link", "state", "category",
 # ── Logging setup ─────────────────────────────────────────────────────────────
 
 os.makedirs(LOGS_DIR, exist_ok=True)
+os.makedirs(os.path.dirname(RAW_CSV), exist_ok=True)
+os.makedirs(os.path.dirname(PROCESSED_CSV), exist_ok=True)
 log_file = os.path.join(LOGS_DIR, "sync_log.txt")
 
 logging.basicConfig(
