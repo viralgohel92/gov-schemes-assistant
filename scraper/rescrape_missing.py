@@ -21,6 +21,9 @@ import time
 import sqlite3
 
 from dotenv import load_dotenv
+from database.db import SessionLocal
+from database.models import Scheme
+from rag.llm import get_vector_db, get_embedding_model
 load_dotenv()
 
 # ── Config ────────────────────────────────────────────────────────────────────
@@ -129,99 +132,82 @@ def build_document_text(name, description, category, benefits, eligibility,
     )
 
 
-def get_missing_schemes(db_path: str) -> list:
-    """Read ChromaDB SQLite to find schemes with empty/missing fields."""
-    sqlite_path = os.path.join(db_path, "chroma.sqlite3")
-    if not os.path.exists(sqlite_path):
-        print(f"❌ ChromaDB not found at: {sqlite_path}")
-        return []
-
-    conn = sqlite3.connect(sqlite_path)
-    cur  = conn.cursor()
-
-    # Find schemes where benefits OR eligibility is "Not found"
-    cur.execute("""
-        SELECT string_value FROM embedding_fulltext_search
-        WHERE string_value LIKE '%benefits : Not found%'
-           OR string_value LIKE '%eligibility : Not found%'
-    """)
-    rows = cur.fetchall()
-    conn.close()
-
-    missing = []
-    seen    = set()
-
-    for (text,) in rows:
-        name_m  = re.search(r'Scheme name\s*:(.*)', text)
-        link_m  = re.search(r'Link\s*:(.*)',        text)
-        cat_m   = re.search(r'category\s*:(.*)',    text)
-        state_m = re.search(r'state\s*:(.*)',       text)
-
-        if not (name_m and link_m):
-            continue
-
-        name = name_m.group(1).strip()
-        url  = link_m.group(1).strip()
-
-        # Skip duplicates
-        if url in seen:
-            continue
-        seen.add(url)
-
-        missing.append({
-            "name":     name,
-            "url":      url,
-            "category": cat_m.group(1).strip()   if cat_m   else "",
-            "state":    state_m.group(1).strip()  if state_m else "Gujarat",
-        })
-
-    return missing
-
-
-def update_chromadb(vector_db, scheme_name: str, new_doc_text: str):
-    """Delete old embedding and add updated one."""
+def get_missing_schemes() -> list:
+    """Query Supabase for schemes with missing or 'Not found' fields."""
+    session = SessionLocal()
     try:
-        results = vector_db._collection.get(
-            where_document={"$contains": scheme_name[:40]}
-        )
-        if results and results.get("ids"):
-            vector_db._collection.delete(ids=results["ids"])
-            print(f"  🗑️  Deleted {len(results['ids'])} old embedding(s)")
+        # Search for schemes that have 'Not available' or 'Not found' in benefits or eligibility
+        missing_schemes = session.query(Scheme).filter(
+            (Scheme.benefits.ilike('%Not available%')) | 
+            (Scheme.benefits.ilike('%Not found%')) |
+            (Scheme.eligibility.ilike('%Not available%')) |
+            (Scheme.eligibility.ilike('%Not found%'))
+        ).all()
+        
+        results = []
+        for s in missing_schemes:
+            results.append({
+                "id": s.id,
+                "name": s.scheme_name,
+                "url": s.application_link,
+                "category": s.category,
+                "state": s.state or "Gujarat"
+            })
+        return results
+    except Exception as e:
+        print(f"❌ Error querying missing schemes: {e}")
+        return []
+    finally:
+        session.close()
 
-        vector_db.add_texts([new_doc_text])
-        print(f"  ✅ Added updated embedding")
+
+def update_cloud_db(scheme_id: int, fields: dict, doc_text: str):
+    """Update both relational and vector stores on Supabase."""
+    session = SessionLocal()
+    try:
+        # 1. Update Relational DB
+        scheme = session.query(Scheme).filter(Scheme.id == scheme_id).first()
+        if scheme:
+            scheme.description = fields.get("description", scheme.description)
+            scheme.benefits = fields.get("benefits", scheme.benefits)
+            scheme.eligibility = fields.get("eligibility", scheme.eligibility)
+            scheme.application_process = fields.get("application_process", scheme.application_process)
+            scheme.documents_required = fields.get("documents_required", scheme.documents_required)
+            scheme.missing_count = 0 # Reset if found
+            session.commit()
+            print(f"  💾 Relational DB updated")
+
+        # 2. Update Vector DB (Delete old and add new)
+        vector_db = get_vector_db()
+        if vector_db:
+            from supabase.client import create_client
+            supabase_url = os.getenv("SUPABASE_URL")
+            supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+            supabase_client = create_client(supabase_url, supabase_key)
+            
+            # Delete old documents referencing this scheme
+            # We use the name as a proxy for filtering in this script
+            supabase_client.table("documents").delete().filter("content", "ilike", f"%Scheme name :{scheme.scheme_name}%").execute()
+            
+            # Add updated document
+            vector_db.add_texts([doc_text])
+            print(f"  ✅ Vector Index updated")
 
     except Exception as e:
-        print(f"  ⚠️  ChromaDB update error: {e}")
-        try:
-            vector_db.add_texts([new_doc_text])
-            print(f"  ✅ Added (fallback)")
-        except Exception as e2:
-            print(f"  ❌ Failed completely: {e2}")
+        print(f"  ⚠️  Cloud DB update error: {e}")
+        session.rollback()
+    finally:
+        session.close()
 
 
 def main():
-    """Main function — called by scheduler.py at 3 AM or run manually."""
-    print("\n🚀 Yojana AI — Re-scraper for missing scheme details")
+    """Main function — called by GitHub Actions or run manually."""
+    print("\n🚀 Yojana AI — Cloud Re-scraper for missing scheme details")
     print("=" * 60)
 
-    # ── Load ChromaDB ────────────────────────────────────────────────────────
-    print("⏳ Loading ChromaDB and embedding model...")
-    from langchain_chroma import Chroma
-    from langchain_huggingface import HuggingFaceEmbeddings
-
-    embeddings = HuggingFaceEmbeddings(
-        model_name="sentence-transformers/all-MiniLM-L6-v2"
-    )
-    vector_db = Chroma(
-        persist_directory=VECTOR_DB_PATH,
-        embedding_function=embeddings,
-    )
-    print("✅ ChromaDB loaded\n")
-
     # ── Find schemes with missing data ───────────────────────────────────────
-    missing = get_missing_schemes(VECTOR_DB_PATH)
-    print(f"📋 Found {len(missing)} schemes with missing details\n")
+    missing = get_missing_schemes()
+    print(f"📋 Found {len(missing)} schemes with missing details in Cloud DB\n")
 
     if not missing:
         print("🎉 Nothing to fix! All schemes have complete data.")
@@ -276,8 +262,8 @@ def main():
             link                = url,
         )
 
-        print(f"  💾 Updating ChromaDB...")
-        update_chromadb(vector_db, name, new_doc)
+        print(f"  💾 Updating Cloud Database...")
+        update_cloud_db(scheme["id"], fields, new_doc)
         success += 1
 
         print(f"  ✅ Done\n")
