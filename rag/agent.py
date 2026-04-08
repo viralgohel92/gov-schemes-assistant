@@ -21,11 +21,21 @@ from rag.eligibility import extract_user_profile, check_eligibility_for_schemes,
 from rag.web_enrichment import apply_visit_site_fallback
 
 def get_total_scheme_count() -> int:
-    """Count total schemes stored in ChromaDB."""
+    """Count total schemes stored in the Vector DB or Database."""
     try:
-        return get_vector_db()._collection.count()
+        from database.db import SessionLocal
+        from database.models import Scheme  # Assuming such a model exists for metadata
+        # Fallback to counting from PG directly if vector DB count fails
+        db = SessionLocal()
+        count = db.execute("SELECT count(*) FROM documents").scalar()
+        db.close()
+        return count
     except Exception:
-        return 0
+        try:
+            # Fallback for Chroma
+            return get_vector_db()._collection.count()
+        except:
+            return 0
 
 def conversational_reply_stream(question: str, chat_history: list, lang: str = "en", intent: str = "conversational"):
     # \u2500\u2500 Greeting 

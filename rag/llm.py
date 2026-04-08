@@ -1,8 +1,9 @@
-from langchain_chroma import Chroma
-from langchain_huggingface import HuggingFaceEmbeddings
-from langchain_mistralai import ChatMistralAI
+import os
+from langchain_community.vectorstores import Chroma, SupabaseVectorStore
+from langchain_mistralai import ChatMistralAI, MistralAIEmbeddings
 from pydantic import BaseModel, Field
 from typing import List, Optional
+from supabase.client import create_client
 
 # -------------------------------------------------
 # Schemas
@@ -74,15 +75,30 @@ def get_preprocessor_llm():
 def get_embedding_model():
     global _embedding_model
     if _embedding_model is None:
-        print("⏳ Loading embedding model...")
-        _embedding_model = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
-        print("✅ Embedding model loaded.")
+        print("⏳ Loading Mistral embedding model (API)...")
+        # Use Mistral API for embeddings to save bundle size on Vercel
+        _embedding_model = MistralAIEmbeddings(model="mistral-embed")
+        print("✅ Mistral embeddings ready.")
     return _embedding_model
 
 def get_vector_db():
     global _vector_db
     if _vector_db is None:
-        _vector_db = Chroma(persist_directory="vector_db", embedding_function=get_embedding_model())
+        supabase_url = os.getenv("SUPABASE_URL")
+        supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+        
+        if supabase_url and supabase_key:
+            print("🌐 Connecting to Supabase Vector Store...")
+            supabase_client = create_client(supabase_url, supabase_key)
+            _vector_db = SupabaseVectorStore(
+                client=supabase_client,
+                embedding=get_embedding_model(),
+                table_name="documents",
+                query_name="match_documents",
+            )
+        else:
+            print("📂 Using local Chroma Vector Store (Fallback)...")
+            _vector_db = Chroma(persist_directory="vector_db", embedding_function=get_embedding_model())
     return _vector_db
 
 def get_llm():
@@ -111,8 +127,7 @@ def get_profile_llm():
 
 def warmup():
     """
-    Pre-load the embedding model and LLM so the first real request is fast.
-    Call this from app.py in a background thread right after Flask starts.
+    Pre-load models. On Vercel, this is less useful but kept for local performance.
     """
     print("🔥 Warming up models...")
     get_embedding_model()
@@ -120,4 +135,4 @@ def warmup():
     get_llm()
     get_structured_llm()
     get_profile_llm()
-    print("✅ Warmup complete — all models ready.")
+    print("✅ Warmup complete.")
