@@ -21,24 +21,21 @@ if not DATABASE_URL:
 if DATABASE_URL and DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
-engine = None
+if not DATABASE_URL or "None" in str(DATABASE_URL):
+    raise ConnectionError("❌ FATAL: DATABASE_URL is missing or invalid in environment variables.")
+
 try:
-    if not DATABASE_URL or "None" in str(DATABASE_URL):
-        print("⚠️ Warning: DATABASE_URL is missing. Using in-memory fallback.")
-        engine = create_engine("sqlite:///:memory:")
-    else:
-        # Use simple connection for serverless/Supabase compatibility
-        engine = create_engine(
-            DATABASE_URL, 
-            pool_pre_ping=True,
-            pool_recycle=3600
-        )
-        # Quick connectivity test
-        with engine.connect() as conn:
-            pass
-        print("✅ Database engine initialized.")
+    # Use connection pooling and pre-ping to handle serverless connections/restarts
+    engine = create_engine(
+        DATABASE_URL, 
+        pool_pre_ping=True,
+        pool_recycle=3600
+    )
+    # Quick connectivity test
+    with engine.connect() as conn:
+        print("✅ Database connection verified (Supabase Cloud).")
 except Exception as e:
-    print(f"⚠️ Warning: Database connection failed. Using fallback: {e}")
-    engine = create_engine("sqlite:///:memory:")
+    # Stop execution if connection fails
+    raise ConnectionError(f"❌ FATAL: Failed to connect to Supabase: {e}")
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
