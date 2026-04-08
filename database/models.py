@@ -17,6 +17,8 @@ class Scheme(Base):
     documents_required = Column(Text)
     application_process = Column(Text)
     state = Column(String)
+    missing_count = Column(Integer, default=0)
+    last_updated_at = Column(DateTime, default=datetime.datetime.utcnow)
 
 class User(Base):
     __tablename__ = "users"
