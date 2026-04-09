@@ -118,6 +118,48 @@ def get_embedding_model():
         print("✅ Mistral embeddings ready.")
     return _embedding_model
 
+class NativeSupabaseVectorStore:
+    def __init__(self, client, embedding, table_name="documents", query_name="match_documents"):
+        self.client = client
+        self.embedding = embedding
+        self.table_name = table_name
+        self.query_name = query_name
+
+    def add_texts(self, texts: List[str]):
+        """Inserts documents, allowing Supabase to auto-generate the ID."""
+        embeddings = self.embedding.embed_documents(texts)
+        for text, embed in zip(texts, embeddings):
+            self.client.table(self.table_name).insert({
+                "content": text,
+                "metadata": {},
+                "embedding": embed
+            }).execute()
+
+    def as_retriever(self, search_kwargs=None):
+        k = search_kwargs.get("k", 5) if search_kwargs else 5
+        return self.NativeRetriever(self, k)
+
+    class NativeRetriever:
+        def __init__(self, store, k):
+            self.store = store
+            self.k = k
+            
+        def invoke(self, query):
+            from langchain_core.documents import Document
+            embed = self.store.embedding.embed_query(query)
+            try:
+                res = self.store.client.rpc(self.store.query_name, {
+                    "query_embedding": embed,
+                    "match_count": self.k
+                }).execute()
+                docs = []
+                for row in res.data:
+                    docs.append(Document(page_content=row.get("content", ""), metadata=row.get("metadata", {})))
+                return docs
+            except Exception as e:
+                print(f"NativeRetriever error: {e}")
+                return []
+
 def get_vector_db():
     global _vector_db
     if _vector_db is None:
@@ -125,19 +167,18 @@ def get_vector_db():
         supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
         
         if supabase_url and supabase_key:
-            print("🌐 Connecting to Supabase Vector Store via API...")
+            print("🌐 Connecting to Supabase Vector Store via API (Native Wrapper)...")
             from supabase.client import create_client
-            from langchain_community.vectorstores import SupabaseVectorStore
             
             try:
                 supabase_client = create_client(supabase_url, supabase_key)
-                _vector_db = SupabaseVectorStore(
+                _vector_db = NativeSupabaseVectorStore(
                     client=supabase_client,
                     embedding=get_embedding_model(),
                     table_name="documents",
-                    query_name="match_documents",
+                    query_name="match_documents"
                 )
-                print("✅ Supabase Vector Store ready.")
+                print("✅ Supabase Native Vector Store ready.")
             except Exception as e:
                 print(f"⚠️ Warning: Supabase client failed: {e}. Falling back to local.")
         

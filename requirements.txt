@@ -8,7 +8,7 @@ werkzeug
 # --- Database & Persistence ---
 SQLAlchemy
 psycopg2-binary
-supabase<2.4.0
+supabase
 langchain-community
 
 # --- AI & RAG (LangChain API Stack) ---
