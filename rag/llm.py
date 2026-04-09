@@ -72,7 +72,7 @@ class _SupabaseDirectRetriever:
         query_embedding = self._embedding.embed_query(query)
         result = self._client.rpc(
             self._query_name,
-            {"query_embedding": query_embedding, "match_count": k},
+            {"query_embedding": query_embedding, "match_count": k, "match_threshold": 0.0},
         ).execute()
         docs = []
         for row in (result.data or []):
