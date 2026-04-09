@@ -109,7 +109,7 @@ def fetch_schemes(question: str, chat_history: list, k: int = 5, last_schemes: l
     prompt = ChatPromptTemplate.from_messages([
         ("system", system),
         ("placeholder", "{chat_history}"),
-        ("human", "Based on the Question, extract ALL relevant government scheme names strictly from the Context below. CRITICAL: Do NOT invent schemes. Do NOT return the user's question as a scheme name. If no schemes match, return an empty list.\n\nContext:\n{context}\n\nQuestion: {question}")
+        ("human", "Based on the Question, safely extract government scheme names strictly from the Context below. CRITICAL RULES:\n1. Do NOT invent schemes.\n2. Do NOT return the user's question as a scheme name.\n3. ONLY extract schemes from the Context that actually match the topic or category requested in the Question.\n4. If the Context contains completely unrelated schemes, IGNORE them.\n5. If no schemes in the Context are relevant to the Question, return an empty list.\n\nContext:\n{context}\n\nQuestion: {question}")
     ])
     
     # \u2500\u2500 SPEED OPTIMIZATION: Branching Logic \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
