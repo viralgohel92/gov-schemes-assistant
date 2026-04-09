@@ -175,25 +175,43 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     finally:
         if os.path.exists(temp_ogg): os.remove(temp_ogg)
 
-def start_telegram_bot():
+def create_telegram_app():
+    """Initializes and returns the Telegram Application instance."""
     if not TELEGRAM_TOKEN:
-        print("❌ Error: TELEGRAM_BOT_TOKEN not found")
-        return
+        print("Error: TELEGRAM_BOT_TOKEN not found")
+        return None
 
-    # Use a new event loop for this thread if necessary
+    app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_message))
+    app.add_handler(MessageHandler(filters.VOICE, handle_voice))
+    return app
+
+_telegram_app = None
+
+async def handle_webhook_update(update_json: dict):
+    """Processes a single update received via webhook."""
+    global _telegram_app
+    if not TELEGRAM_TOKEN:
+        return
+    
+    if _telegram_app is None:
+        _telegram_app = create_telegram_app()
+        await _telegram_app.initialize()
+        await _telegram_app.start()
+
     try:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        
-        app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
-        app.add_handler(CommandHandler("start", start))
-        app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_message))
-        app.add_handler(MessageHandler(filters.VOICE, handle_voice))
-        
-        print("🚀 Telegram Bot (with Voice) is running...")
-        app.run_polling(close_loop=False)
+        update = Update.de_json(update_json, _telegram_app.bot)
+        await _telegram_app.process_update(update)
     except Exception as e:
-        print(f"❌ Telegram Bot Error: {e}")
+        print(f"❌ Error processing Telegram update: {e}")
+
+def start_telegram_bot():
+    """Starts the bot in polling mode (for local testing)."""
+    app = create_telegram_app()
+    if app:
+        print("Telegram Bot (with Voice) is running in Polling mode...")
+        app.run_polling()
 
 if __name__ == '__main__':
     start_telegram_bot()

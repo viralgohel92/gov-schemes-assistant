@@ -1,5 +1,5 @@
 # --- Core Web Framework ---
-flask
+flask[async]
 flask-bcrypt
 flask-login
 flask-mail

@@ -17,9 +17,10 @@ from database.db import SessionLocal
 from database.models import User, ChatHistory, Notification
 from utils.notifier import broadcast_new_schemes
 try:
-    from bot.telegram_handler import start_telegram_bot
+    from bot.telegram_handler import start_telegram_bot, handle_webhook_update
 except Exception:
     start_telegram_bot = None
+    handle_webhook_update = None
 import asyncio
 import requests
 from twilio.twiml.messaging_response import MessagingResponse
@@ -55,9 +56,8 @@ def _warmup():
 
 # ── Background Threading ───────────────────────────────────────────────────
 # NOTE: Background threads are disabled for Vercel/Serverless deployment.
-# Warmup and Telegram Polling do not work in short-lived serverless functions.
+# We use Webhooks for Telegram instead of polling.
 # threading.Thread(target=_warmup, daemon=True).start()
-# threading.Thread(target=start_telegram_bot, daemon=True).start()
 
 
 @app.route("/me")
@@ -768,6 +768,49 @@ def tts_wa():
 def reset():
     session["session_id"] = str(uuid.uuid4())
     return jsonify({"status": "ok"})
+
+# ── Telegram Webhook ─────────────────────────────────────────────────────
+
+@app.route("/telegram", methods=["POST"])
+async def telegram_webhook():
+    """Endpoint for Telegram Webhook updates."""
+    if not handle_webhook_update:
+        return jsonify({"error": "Telegram handler not found"}), 500
+        
+    try:
+        update_json = request.get_json()
+        if update_json:
+            # We use await here because handle_webhook_update is async
+            await handle_webhook_update(update_json)
+        return "OK", 200
+    except Exception as e:
+        print(f"Telegram Webhook Error: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/set_telegram_webhook", methods=["GET"])
+def set_telegram_webhook():
+    """Utility route to set the Telegram webhook URL."""
+    token = os.getenv("TELEGRAM_BOT_TOKEN")
+    if not token:
+        return "TELEGRAM_BOT_TOKEN not set", 400
+    
+    # Use ngrok URL if provided in env, else try to guess from request
+    domain = os.getenv("VERCEL_URL") or request.host
+    if not domain.startswith("http"):
+        # Vercel handles https by default, ngrok gives http/https
+        protocol = "https" if "vercel" in domain or "ngrok" in domain else "http"
+        webhook_url = f"{protocol}://{domain}/telegram"
+    else:
+        webhook_url = f"{domain}/telegram"
+
+    # Call Telegram API
+    tg_url = f"https://api.telegram.org/bot{token}/setWebhook?url={webhook_url}"
+    response = requests.get(tg_url)
+    return jsonify({
+        "status": "Webhook update attempt finished",
+        "webhook_url": webhook_url,
+        "telegram_response": response.json()
+    })
 
 
 if __name__ == "__main__":

@@ -22,7 +22,7 @@ if DATABASE_URL and DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
 if not DATABASE_URL or "None" in str(DATABASE_URL):
-    raise ConnectionError("❌ FATAL: DATABASE_URL is missing or invalid in environment variables.")
+    raise ConnectionError("FATAL: DATABASE_URL is missing or invalid in environment variables.")
 
 try:
     # Use connection pooling and pre-ping to handle serverless connections/restarts
@@ -33,10 +33,10 @@ try:
     )
     # Quick connectivity test
     with engine.connect() as conn:
-        print("✅ Database connection verified (Supabase Cloud).")
+        print("Database connection verified (Supabase Cloud).")
 except Exception as e:
     # Stop execution if connection fails
-    raise ConnectionError(f"❌ FATAL: Failed to connect to Supabase: {e}")
+    raise ConnectionError(f"FATAL: Failed to connect to Supabase: {e}")
 
 # ── Auto-create tables and pgvector extension on first run ────────────────────
 def init_db():
@@ -49,7 +49,7 @@ def init_db():
             conn.commit()
         # Create all ORM-defined tables (schemes, users, etc.)
         Base.metadata.create_all(bind=engine)
-        print("✅ Database schema initialized (tables ready).")
+        print("Database schema initialized (tables ready).")
     except Exception as e:
         print(f"⚠️  Schema init warning: {e}")
 
