@@ -187,27 +187,25 @@ def create_telegram_app():
     app.add_handler(MessageHandler(filters.VOICE, handle_voice))
     return app
 
-_telegram_app = None
+_telegram_app = create_telegram_app()
 
 async def handle_webhook_update(update_json: dict):
-    """Processes a single update received via webhook."""
-    global _telegram_app
-    if not TELEGRAM_TOKEN:
+    """Processes a single update received via webhook using an async context manager."""
+    if not _telegram_app:
         return
     
-    if _telegram_app is None:
-        _telegram_app = create_telegram_app()
-        await _telegram_app.initialize()
-        await _telegram_app.start()
-
     try:
-        update = Update.de_json(update_json, _telegram_app.bot)
-        await _telegram_app.process_update(update)
+        print(f"DEBUG: Processing Telegram update: {update_json.get('update_id')}")
+        async with _telegram_app:
+            update = Update.de_json(update_json, _telegram_app.bot)
+            await _telegram_app.process_update(update)
+        print("DEBUG: Telegram update processed successfully.")
     except Exception as e:
-        print(f"❌ Error processing Telegram update: {e}")
+        print(f"Error processing Telegram update: {e}")
 
 def start_telegram_bot():
     """Starts the bot in polling mode (for local testing)."""
+    # Create a fresh app for polling to avoid collision with global one
     app = create_telegram_app()
     if app:
         print("Telegram Bot (with Voice) is running in Polling mode...")

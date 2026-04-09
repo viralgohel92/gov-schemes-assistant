@@ -792,25 +792,42 @@ def set_telegram_webhook():
     """Utility route to set the Telegram webhook URL."""
     token = os.getenv("TELEGRAM_BOT_TOKEN")
     if not token:
-        return "TELEGRAM_BOT_TOKEN not set", 400
+        return jsonify({"error": "TELEGRAM_BOT_TOKEN not set in environment"}), 400
     
-    # Use ngrok URL if provided in env, else try to guess from request
-    domain = os.getenv("VERCEL_URL") or request.host
+    # 1. Determine the domain
+    # Use NGROK_URL from .env if it looks valid
+    ngrok_env = os.getenv("NGROK_URL", "")
+    if "ngrok-free.dev" in ngrok_env:
+        domain = ngrok_env.split(" -> ")[0].strip()
+    else:
+        domain = os.getenv("VERCEL_URL") or request.host
+
+    # 2. Build the full webhook URL
     if not domain.startswith("http"):
         # Vercel handles https by default, ngrok gives http/https
         protocol = "https" if "vercel" in domain or "ngrok" in domain else "http"
         webhook_url = f"{protocol}://{domain}/telegram"
     else:
         webhook_url = f"{domain}/telegram"
+        if not webhook_url.endswith("/telegram"):
+            webhook_url += "/telegram"
 
-    # Call Telegram API
+    print(f"DEBUG: Attempting to set Telegram webhook to: {webhook_url}")
+
+    # 3. Call Telegram API
     tg_url = f"https://api.telegram.org/bot{token}/setWebhook?url={webhook_url}"
-    response = requests.get(tg_url)
-    return jsonify({
-        "status": "Webhook update attempt finished",
-        "webhook_url": webhook_url,
-        "telegram_response": response.json()
-    })
+    try:
+        response = requests.get(tg_url)
+        res_json = response.json()
+        print(f"DEBUG: Telegram API Response: {res_json}")
+        return jsonify({
+            "status": "Webhook update attempt finished",
+            "webhook_url": webhook_url,
+            "telegram_response": res_json
+        })
+    except Exception as e:
+        print(f"ERROR: Failed to set webhook: {e}")
+        return jsonify({"error": str(e)}), 500
 
 
 if __name__ == "__main__":
