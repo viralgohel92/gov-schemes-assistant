@@ -19,6 +19,9 @@ def get_session(session_id: str) -> dict:
     return store[session_id]
 
 def save_to_history(session_id: str, question: str, answer: str):
+    if not answer or not answer.strip():
+        # Prevent Mistral API 400 errors by not saving empty messages
+        return
     s = get_session(session_id)
     s["history"].append(HumanMessage(content=question))
     s["history"].append(AIMessage(content=answer))

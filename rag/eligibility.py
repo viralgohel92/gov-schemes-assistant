@@ -280,6 +280,13 @@ def fetch_eligible_schemes(profile: UserProfile, k: int = 10) -> List[dict]:
 
     def _extract_and_check(fetch_k: int, query: str) -> List[dict]:
         docs = get_vector_db().as_retriever(search_kwargs={"k": fetch_k}).invoke(query)
+        
+        # SQL Fallback if vector search returns nothing
+        if not docs:
+            print(f"[fetch_eligible] Vector search empty — trying SQL fallback for: {query}")
+            from rag.retriever import _sql_fallback_search
+            docs = _sql_fallback_search(query, fetch_k)
+        
         if not docs:
             print(f"[fetch_eligible] No docs returned for query: {query}")
             return []

@@ -72,6 +72,9 @@ def translate_to_english(text: str, source_lang: str) -> str:
     if clean in buttons:
         return buttons[clean]
 
+    if not text or not text.strip():
+        return text
+
     lang_name = {"hi": "Hindi", "gu": "Gujarati"}[source_lang]
     prompt = (
         f"Translate this {lang_name} query to English for a government scheme search engine.\n"
@@ -84,12 +87,16 @@ def translate_to_english(text: str, source_lang: str) -> str:
         f"English:"
     )
     r = get_llm().invoke(prompt)
-    return r.content.strip()
+    translated = r.content.strip()
+    return translated if translated else text
 
 def translate_response(text: str, target_lang: str) -> str:
     """Translate agent response from English to target language."""
     if target_lang == "en":
         return text
+    if not text or not text.strip():
+        return text
+
     lang_name = {"hi": "Hindi (हिन्दी, Devanagari script)", "gu": "Gujarati (ગુજરાતી, Gujarati script)"}[target_lang]
     script_warn = {
         "hi": "IMPORTANT: Use ONLY Hindi language with Devanagari script (हिन्दी). Do NOT use Gujarati script.",
@@ -101,7 +108,8 @@ def translate_response(text: str, target_lang: str) -> str:
         f"Keep unchanged: scheme names, official links, SC/ST/OBC/EWS/SEBC, state names, ₹ amounts, numbers.\n"
         f"Return ONLY the translation.\n\nEnglish: {text}\n\nTranslation:"
     )
-    return r.content.strip()
+    translated = r.content.strip()
+    return translated if translated else text
 
 def get_string(key: str, lang: str) -> str:
     """Get a static UI string in the given language."""

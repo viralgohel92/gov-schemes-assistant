@@ -370,7 +370,11 @@ def ask_agent(question: str, session_id: str = "user_1", ui_lang: str = None, us
         session["last_limit"] = limit
 
     if intent == "names_only":
-        selected = schemes[:limit] if limit else schemes
+        # Filter out invalid or hallucinated names (LLM sometimes matches labels instead of values)
+        invalid_names = {"scheme name", "not available", "not found", "none", "n/a", "unknown", "scheme"}
+        selected = [s for s in schemes if s.scheme_name.lower().strip() not in invalid_names]
+        selected = selected[:limit] if limit else selected
+        
         if not selected:
             reply = reply_in_lang(ls("no_schemes_found"))
             save_to_history(session_id, question, reply)
@@ -414,7 +418,17 @@ def ask_agent(question: str, session_id: str = "user_1", ui_lang: str = None, us
         return
 
     # full_detail — Stream TEXT -> then render CARDS
-    selected = schemes[:limit] if limit else schemes
+    # Filter out invalid or hallucinated names
+    invalid_names = {"scheme name", "not available", "not found", "none", "n/a", "unknown", "scheme"}
+    selected = [s for s in schemes if s.scheme_name.lower().strip() not in invalid_names]
+    selected = selected[:limit] if limit else selected
+
+    if not selected:
+        reply = reply_in_lang(ls("no_schemes_found"))
+        save_to_history(session_id, question, reply)
+        yield {"type": "conversational", "reply": reply, "lang": lang}
+        return
+
     save_to_history(session_id, question, f"Showed details for: {', '.join(s.scheme_name for s in selected)}")
     dicts = [s.model_dump() for s in selected]
 

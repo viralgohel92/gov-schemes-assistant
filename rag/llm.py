@@ -150,14 +150,19 @@ class NativeSupabaseVectorStore:
             try:
                 res = self.store.client.rpc(self.store.query_name, {
                     "query_embedding": embed,
+                    "match_threshold": 0.3,
                     "match_count": self.k
                 }).execute()
                 docs = []
-                for row in res.data:
-                    docs.append(Document(page_content=row.get("content", ""), metadata=row.get("metadata", {})))
+                if res.data:
+                    for row in res.data:
+                        docs.append(Document(page_content=row.get("content", ""), metadata=row.get("metadata", {})))
+                    print(f"✅ Vector search returned {len(docs)} documents")
+                else:
+                    print(f"⚠️ Vector search returned no results for query: {query[:80]}...")
                 return docs
             except Exception as e:
-                print(f"NativeRetriever error: {e}")
+                print(f"❌ NativeRetriever error: {e}")
                 return []
 
 def get_vector_db():
