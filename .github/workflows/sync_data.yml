@@ -2,8 +2,8 @@ name: Daily Scheme Sync
 
 on:
   schedule:
-    # Runs at 02:00 AM UTC (approx 07:30 AM IST)
-    - cron: '0 2 * * *'
+    # Runs at 02:00 AM IST (= 20:30 UTC previous day)
+    - cron: '30 20 * * *'
   workflow_dispatch: # Allows manual trigger
 
 jobs:
@@ -29,6 +29,9 @@ jobs:
         run: |
           python3 -m pip install --upgrade pip
           python3 -m pip install -r requirements.txt
+          # Install playwright & pandas here (intentionally NOT in requirements.txt
+          # to keep the Vercel deployment bundle under the 250 MB limit)
+          python3 -m pip install playwright pandas
           python3 -m playwright install chromium
           python3 -m playwright install-deps
 
