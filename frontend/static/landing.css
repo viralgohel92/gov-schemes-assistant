@@ -422,10 +422,61 @@ footer {
 
 .visible { opacity: 1; transform: translateY(0); scale: 1; }
 
+/* ── Responsive — Tablets ── */
 @media (max-width: 968px) {
     .nav-links { display: none; }
     .hero-content { flex-direction: column; text-align: center; }
     .hero h1 { font-size: 40px; }
-    .hero-btns { justify-content: center; }
+    .hero-btns { justify-content: center; flex-wrap: wrap; }
     .hero-visual { display: none; }
+    .hero p { margin-left: auto; margin-right: auto; }
+    .footer-content { flex-direction: column; gap: 30px; text-align: center; }
+    .social-links { justify-content: center; }
+    .mid-cta h2 { font-size: 32px; }
+    .btn-massive-glow { font-size: 20px; padding: 16px 40px; }
+    .section-header h2 { font-size: 30px; }
+}
+
+/* ── Responsive — Mobile ── */
+@media (max-width: 600px) {
+    .hero { padding-top: 70px; min-height: 100vh; height: auto; }
+    .hero h1 { font-size: 28px; line-height: 1.2; }
+    .hero p { font-size: 15px; margin-bottom: 25px; }
+    .badge { font-size: 11px; padding: 4px 12px; }
+    .hero-btns { flex-direction: column; align-items: center; gap: 12px; }
+    .btn-primary-glow, .btn-outline { padding: 12px 28px; font-size: 14px; width: 100%; max-width: 280px; text-align: center; }
+    .features { padding: 60px 0; }
+    .features-grid { grid-template-columns: 1fr; gap: 20px; }
+    .feature-card { padding: 25px; }
+    .feature-card h3 { font-size: 18px; }
+    .mid-cta { padding: 60px 0; }
+    .mid-cta h2 { font-size: 24px; }
+    .mid-cta p { font-size: 14px; }
+    .btn-massive-glow { font-size: 16px; padding: 14px 30px; letter-spacing: 1px; }
+    .tech { padding-bottom: 60px; }
+    .tech-grid { gap: 25px; }
+    .tech-emoji { font-size: 36px; }
+    .tech-item img { width: 44px; height: 44px; }
+    .tech-item span { font-size: 11px; }
+    .omnichannel { padding: 50px 0; }
+    .omnichannel h2 { font-size: 24px; }
+    .bot-btns { flex-direction: column; align-items: center; gap: 12px; }
+    .btn-bot { width: 100%; max-width: 300px; justify-content: center; font-size: 15px; padding: 12px 20px; }
+    footer { padding: 40px 0; }
+    .brand-name { font-size: 20px; }
+    nav { padding: 10px 0; }
+    .flag { font-size: 20px; }
+    .section-header h2 { font-size: 24px; }
+    .sub-title { font-size: 12px; letter-spacing: 2px; }
+}
+
+/* ── Very small devices ── */
+@media (max-width: 360px) {
+    .hero h1 { font-size: 24px; }
+    .hero p { font-size: 14px; }
+    .mid-cta h2 { font-size: 20px; }
+    .btn-massive-glow { font-size: 14px; padding: 12px 24px; }
+    .feature-card { padding: 20px; }
+    .brand-name { font-size: 18px; }
+    .container { padding: 0 15px; }
 }

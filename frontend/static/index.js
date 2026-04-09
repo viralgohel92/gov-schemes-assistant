@@ -180,7 +180,12 @@ async function speakText(text, btn, lang) {
 
 // ── UI / Sidebar / Auth ───────────────────────────────────────────────────────
 function toggleSidebar() {
-  document.getElementById('sidebar').classList.toggle('hidden');
+  const sidebar = document.getElementById('sidebar');
+  const overlay = document.getElementById('sidebar-overlay');
+  sidebar.classList.toggle('hidden');
+  if (overlay) {
+    overlay.classList.toggle('active', !sidebar.classList.contains('hidden'));
+  }
 }
 
 function toggleAuthModal() {
