@@ -57,13 +57,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
 async def process_text_and_reply(update: Update, text: str, chat_id: str, context: ContextTypes.DEFAULT_TYPE = None, is_voice=False):
-    # Send "typing..." action so the user knows the bot is working
+    # Show typing status
     try:
-        from telegram.constants import ChatAction
-        if context and context.bot:
-            await context.bot.send_chat_action(chat_id=chat_id, action=ChatAction.TYPING)
-    except Exception as e:
-        print(f"DEBUG: Could not send typing action: {e}")
+        await update.message.reply_chat_action(action="typing")
+    except Exception:
+        pass
 
     db = SessionLocal()
     user = db.query(User).filter(User.telegram_chat_id == chat_id).first()
