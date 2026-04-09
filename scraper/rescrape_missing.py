@@ -33,8 +33,8 @@ load_dotenv()
 PROJECT_ROOT   = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 VECTOR_DB_PATH = os.path.join(PROJECT_ROOT, "vector_db")
 
-BATCH_DELAY    = 2    # seconds between Playwright fetches
-MAX_RETRIES    = 2
+BATCH_DELAY    = 5    # seconds between Playwright fetches
+MAX_RETRIES    = 3
 
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -105,15 +105,25 @@ Rules:
 
 JSON:"""
 
-    try:
-        response = llm.invoke(prompt)
-        raw      = response.content.strip()
-        raw      = re.sub(r'^```(?:json)?\s*', '', raw)
-        raw      = re.sub(r'\s*```$', '', raw)
-        return json.loads(raw)
-    except Exception as e:
-        print(f"  ⚠️  LLM parse error: {e}")
-        return {}
+    for attempt in range(1, 4):
+        try:
+            response = llm.invoke(prompt)
+            raw      = response.content.strip()
+            raw      = re.sub(r'^```(?:json)?\s*', '', raw)
+            raw      = re.sub(r'\s*```$', '', raw)
+            return json.loads(raw)
+        except Exception as e:
+            err_str = str(e).lower()
+            if "429" in err_str or "capacity" in err_str or "rate limit" in err_str:
+                sleep_time = 15 * attempt
+                print(f"  ⚠️  Rate limit (429) hit. Sleeping for {sleep_time}s... (Attempt {attempt}/3)")
+                time.sleep(sleep_time)
+            else:
+                print(f"  ⚠️  LLM parse error: {e}")
+                return {}
+                
+    print("  ❌ Exhausted LLM retries for this scheme.")
+    return {}
 
 
 def build_document_text(name, description, category, benefits, eligibility,
