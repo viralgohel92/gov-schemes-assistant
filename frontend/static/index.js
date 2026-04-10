@@ -875,6 +875,38 @@ function wrapWordsInBubble(el) {
   });
 }
 
+function formatStructuredText(text) {
+  if (!text || ['not available','n/a','none',''].includes(String(text).toLowerCase())) {
+    return `<span class="field-value" style="color:var(--muted)">Not available</span>`;
+  }
+
+  // Handle both literal \n and <br>
+  const lines = String(text).split(/\r?\n|<br>/).filter(l => l.trim().length > 0);
+  
+  if (lines.length <= 1 && !/^[0-9]+[\.\)]|^\s*[\•\-\*]/.test(text)) {
+    return `<span class="field-value">${escapeHtml(text)}</span>`;
+  }
+
+  let html = `<div class="structured-list">`;
+  lines.forEach(line => {
+    const trimmed = line.trim();
+    // Match Step 1:, 1., (1)
+    const stepMatch = trimmed.match(/^([0-9\u0AB0-\u0AB9]+[\.\)]|Step\s*[0-9]+[:\.]?|પગલું\s*[0-9]+[:\.]?|चरण\s*[0-9]+[:\.]?)\s*(.*)/i);
+    // Match •, *, -
+    const bulletMatch = trimmed.match(/^([\•\-\*])\s*(.*)/);
+
+    if (stepMatch) {
+      html += `<div class="list-item step"><span class="step-marker">${escapeHtml(stepMatch[1])}</span> ${escapeHtml(stepMatch[2])}</div>`;
+    } else if (bulletMatch) {
+      html += `<div class="list-item bullet"><span class="bullet-marker">●</span> ${escapeHtml(bulletMatch[2])}</div>`;
+    } else {
+      html += `<div class="list-item">${escapeHtml(trimmed)}</div>`;
+    }
+  });
+  html += `</div>`;
+  return html;
+}
+
 function unwrapWordsInBubble(el) {
   if (!el) return;
   el.querySelectorAll('.tts-word').forEach(span => {
@@ -1044,7 +1076,9 @@ async function sendMessage() {
               renderResult(data);
               saveChat(q, data);
             }
-          } catch(e) {}
+          } catch(e) {
+             console.error("Error processing stream line:", e, line);
+          }
         }
       }
     }
