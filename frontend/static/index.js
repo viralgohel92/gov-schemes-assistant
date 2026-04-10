@@ -4,111 +4,87 @@ const sendBtn = document.getElementById('send-btn');
 const micBtn = document.getElementById('mic-btn');
 const inputHint = document.getElementById('input-hint');
 
-// ── Voice Input (Speech-to-Text) ─────────────────────────────────────────────
-let recognition = null;
+// ── Voice Input (Speech-to-Text via Whisper) ────────────────────────────────
+let mediaRecorder = null;
+let audioChunks = [];
 let isListening = false;
 
-const VOICE_LANG = { en: 'en-IN', hi: 'hi-IN', gu: 'gu-IN' };
 const VOICE_HINT = {
-  en: { idle: 'Press Enter to send · Shift+Enter for new line', listening: '🎙️ Listening… speak your question' },
-  hi: { idle: 'Enter दबाएं भेजने के लिए · Shift+Enter नई लाइन के लिए', listening: '🎙️ सुन रहा हूं… बोलिए' },
-  gu: { idle: 'Enter દબાવો મોકલવા માટે · Shift+Enter નવી લીટી માટે', listening: '🎙️ સાંભળું છું… બોલો' },
+  en: { idle: 'Press Enter to send · Shift+Enter for new line', listening: '🔴 Recording… click again to stop' },
+  hi: { idle: 'Enter दबाएं भेजने के लिए · Shift+Enter नई लाइन के लिए', listening: '🔴 रिकॉर्ड हो रहा है… रुकने के लिए क्लिक करें' },
+  gu: { idle: 'Enter દબાવો મોકલવા માટે · Shift+Enter નવી લીટી માટે', listening: '🔴 રેકોર્ડિંગ… રોકવા માટે ફરીથી ક્લિક કરો' },
 };
 
-function cleanTextForSpeech(text, lang) {
-  if (!text) return "";
-  const targetLang = lang || currentLang;
-  let cleaned = text.replace(/([\u2700-\u27BF]|[\uE000-\uF8FF]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]|[\u2011-\u26FF]|\uD83E[\uDD10-\uDDFF])/g, '');
-  cleaned = cleaned.replace(/✅|❌|📋|📌|🎯|📊|💡|🔗|☸️|🇮🇳|🤖|👤|🌾/g, '');
-  cleaned = cleaned.replace(/&nbsp;/g, ' ').replace(/<br>/g, ' . ').replace(/<[^>]*>/g, '')
-                   .replace(/([0-9])\.\s/g, '$1 . ').replace(/([\.।\?\!])\s/g, '$1   ');
-  const andWord = { 'gu': ' અને ', 'hi': ' और ', 'en': ' and ' }[targetLang] || ' and ';
-  cleaned = cleaned.replace(/\//g, andWord);
-  return cleaned.trim();
-}
-
-function getVoiceForLang(langCode, isFallbackAttempt = false) {
-  if (!window.speechSynthesis) return null;
-  const voices = window.speechSynthesis.getVoices();
-  if (!voices.length) return null;
-  const target = langCode.toLowerCase().replace('_', '-');
-  const prefix = target.split('-')[0];
-  const langNameMap = { 'gu': 'gujarati', 'hi': 'hindi', 'en': 'english' };
-  const targetName = langNameMap[prefix];
-  const matches = voices.filter(v => v.lang.toLowerCase().replace('_', '-') === target || v.lang.toLowerCase().startsWith(prefix) || (targetName && v.name.toLowerCase().includes(targetName)));
-  if (matches.length > 0) {
-    const premium = matches.find(v => v.name.toLowerCase().includes('google') || v.name.toLowerCase().includes('online') || v.name.toLowerCase().includes('premium') || v.name.toLowerCase().includes('microsoft'));
-    return premium || matches[0];
-  }
-  if (!isFallbackAttempt && prefix === 'gu') return getVoiceForLang('hi-IN', true);
-  return null;
-}
-
 async function toggleVoice() {
-  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-  
-  if (!SpeechRecognition) {
-    alert('Voice input is not supported in this browser. Please use Chrome or Edge.');
+  if (isListening) {
+    if (mediaRecorder) mediaRecorder.stop();
     return;
   }
 
-  if (isListening) {
-    if (recognition) recognition.stop();
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    alert("Your browser does not support audio recording.");
     return;
   }
 
   try {
-    recognition = new SpeechRecognition();
-    recognition.continuous = true;
-    recognition.interimResults = true;
-    
-    // Strictly map to English, Hindi, and Gujarati
-    const langMap = { 'en': 'en-IN', 'hi': 'hi-IN', 'gu': 'gu-IN' };
-    recognition.lang = langMap[currentLang] || 'en-IN';
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    mediaRecorder = new MediaRecorder(stream);
+    audioChunks = [];
 
-    recognition.onstart = () => {
+    mediaRecorder.ondataavailable = (e) => {
+      if (e.data.size > 0) audioChunks.push(e.data);
+    };
+
+    mediaRecorder.onstart = () => {
       isListening = true;
-      micBtn.textContent = '🔴';
+      micBtn.textContent = '⏹';
       micBtn.classList.add('listening');
-      input.placeholder = VOICE_HINT[currentLang]?.listening || '🎙️ Listening…';
+      input.placeholder = VOICE_HINT[currentLang]?.listening || '🔴 Recording…';
     };
 
-    recognition.onresult = (event) => {
-      let finalTranscript = '';
-      let interimTranscript = '';
-
-      for (let i = event.resultIndex; i < event.results.length; ++i) {
-        if (event.results[i].isFinal) {
-          finalTranscript += event.results[i][0].transcript;
-        } else {
-          interimTranscript += event.results[i][0].transcript;
-        }
-      }
-
-      // Update input instantly "catchup"
-      if (interimTranscript || finalTranscript) {
-        input.value = (finalTranscript + ' ' + interimTranscript).trim();
-        autoResize(input);
-      }
-    };
-
-    recognition.onerror = (event) => {
-      console.error("Speech Recognition Error:", event.error);
-      if (event.error === 'not-allowed') {
-        alert("Microphone access denied.");
-      }
+    mediaRecorder.onstop = async () => {
+      const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
       stopVoiceUI();
+      
+      // Stop all tracks to release microphone
+      stream.getTracks().forEach(track => track.stop());
+
+      // Send to backend
+      await sendAudioToBackend(audioBlob);
     };
 
-    recognition.onend = () => {
-      stopVoiceUI();
-    };
-
-    recognition.start();
-
+    mediaRecorder.start();
   } catch (err) {
-    console.error("Error starting speech recognition:", err);
+    console.error("Error accessing microphone:", err);
+    alert("Microphone access denied or error occurred.");
     stopVoiceUI();
+  }
+}
+
+async function sendAudioToBackend(blob) {
+  const formData = new FormData();
+  formData.append('audio', blob, 'query.webm');
+
+  micBtn.textContent = '⌛'; // Loading state
+  
+  try {
+    const res = await fetch('/stt', {
+      method: 'POST',
+      body: formData
+    });
+    const data = await res.json();
+    if (data.text) {
+      input.value = data.text;
+      autoResize(input);
+      // Optional: auto-send? 
+      // sendMessage(); 
+    } else if (data.error) {
+      console.error("STT Error:", data.error);
+    }
+  } catch (err) {
+    console.error("Failed to send audio:", err);
+  } finally {
+    micBtn.textContent = '🎙️';
   }
 }
 
@@ -118,7 +94,7 @@ function stopVoiceUI() {
   micBtn.classList.remove('listening');
   const L = LANG_UI[currentLang];
   if (L) input.placeholder = L.placeholder;
-  recognition = null;
+  mediaRecorder = null;
 }
 
 // ── Text-to-Speech ────────────────────────────────────────────────────────────
@@ -865,6 +841,10 @@ function buildSchemeCard(s, i) {
     ? `<a href="${escapeHtml(s.official_link)}" target="_blank" class="link-value">🔗 Visit Official Site ↗</a>`
     : `<span class="field-value" style="color:var(--muted)">Not available</span>`;
 
+  // Construct text for TTS
+  const fullText = `Scheme Name: ${s.scheme_name}. Description: ${s.description}. Benefits: ${s.benefits}. Eligibility: ${s.eligibility}. Documents required: ${s.documents_required}. Application process: ${s.application_process}.`;
+  const speakId = `speak-card-${Date.now()}-${i}`;
+
   return `<div class="scheme-card">
     <div class="scheme-card-header">
       <div class="scheme-number">${i}</div>
@@ -899,11 +879,22 @@ function buildSchemeCard(s, i) {
         ${formatStructuredText(s.application_process)}
       </div>
       <div class="divider"></div>
-      <div class="scheme-field full">
-        <span class="field-label">Official Link</span>
-        ${link}
+      <div class="scheme-field" style="grid-column: 1 / -1; display: flex; flex-direction: row; justify-content: space-between; align-items: center;">
+        <button class="speak-btn" id="${speakId}" data-speaking="0" style="margin-top:0">🔊 Listen to Details</button>
+        <div class="scheme-field">
+          <span class="field-label">Official Link</span>
+          ${link}
+        </div>
       </div>
     </div>
+    <script>
+      (function() {
+        const btn = document.getElementById('${speakId}');
+        if (btn) {
+           btn.onclick = () => speakText(\`${fullText.replace(/`/g, '\\`').replace(/\n/g, ' ')}\`, btn);
+        }
+      })();
+    </script>
   </div>`;
 }
 

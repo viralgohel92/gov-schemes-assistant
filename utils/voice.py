@@ -12,9 +12,8 @@ VOICE_MAP = {
 async def generate_speech(text, lang="en", output_path=None):
     """Generates an MP3 file from text using Edge-TTS."""
     if not output_path:
-        # Save in a tmp directory
-        temp_dir = os.path.join(os.getcwd(), "tmp")
-        os.makedirs(temp_dir, exist_ok=True)
+        # Save in the system's writable /tmp directory for serverless
+        temp_dir = "/tmp"
         output_path = os.path.join(temp_dir, f"tts_{uuid.uuid4()}.mp3")
     
     voice = VOICE_MAP.get(lang, VOICE_MAP["en"])

@@ -185,8 +185,7 @@ def speech_to_text():
     audio_file = request.files['audio']
     # Use a unique name to avoid collisions
     temp_filename = f"stt_{uuid.uuid4()}.webm"
-    temp_path = os.path.join(REPO_ROOT, "tmp", temp_filename)
-    os.makedirs(os.path.dirname(temp_path), exist_ok=True)
+    temp_path = os.path.join("/tmp", temp_filename)
     audio_file.save(temp_path)
     
     try:
@@ -228,8 +227,7 @@ def text_to_speech():
     try:
         # Create a temporary file name for TTS
         temp_filename = f"tts_{uuid.uuid4()}.mp3"
-        temp_path = os.path.join(REPO_ROOT, "tmp", temp_filename)
-        os.makedirs(os.path.dirname(temp_path), exist_ok=True)
+        temp_path = os.path.join("/tmp", temp_filename)
         
         # Run the async function from sync Flask
         asyncio.run(generate_speech(text, lang, temp_path))
@@ -663,8 +661,7 @@ def whatsapp_webhook():
             media_response = requests.get(media_url, auth=auth)
             
             temp_ext = media_type.split('/')[-1]
-            temp_path = os.path.join(REPO_ROOT, "tmp", f"wa_voice_{uuid.uuid4()}.{temp_ext}")
-            os.makedirs(os.path.dirname(temp_path), exist_ok=True)
+            temp_path = os.path.join("/tmp", f"wa_voice_{uuid.uuid4()}.{temp_ext}")
             
             with open(temp_path, "wb") as f:
                 f.write(media_response.content)
@@ -757,7 +754,7 @@ def tts_wa():
     if any('\u0a80' <= c <= '\u0aff' for c in text): lang = "gu"
     elif any('\u0900' <= c <= '\u097f' for c in text): lang = "hi"
     
-    temp_path = os.path.join(REPO_ROOT, "tmp", f"wa_reply_{uuid.uuid4()}.mp3")
+    temp_path = os.path.join("/tmp", f"wa_reply_{uuid.uuid4()}.mp3")
     asyncio.run(generate_speech(text, lang, temp_path))
     return send_file(temp_path, mimetype="audio/mpeg")
 
