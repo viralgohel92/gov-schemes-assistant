@@ -183,12 +183,18 @@ async function speakText(text, btn, lang) {
   let totalUnits = 0;
   const wordRanges = [];
   
+  // Weights based on phonetic density and natural pauses
+  const isIndianLang = /[\u0900-\u097F\u0A80-\u0AFF]/.test(text); // Devnagari or Gujarati
+  const baseWeight = isIndianLang ? 1.15 : 1.0; 
+
   words.forEach((w) => {
-    const text = w.textContent.trim();
-    let units = text.length;
+    const wordText = w.textContent.trim();
+    let units = wordText.length * baseWeight;
+    units += 1.5; // Account for the space following the word
+    
     // Add weights for natural pauses in TTS
-    if (/[.\u0964?!]/.test(text)) units += 15; // end of sentence (incl. Hindi purn viram)
-    else if (/[,\u0a83:;]/.test(text)) units += 8; // pause
+    if (/[.\u0964?!]/.test(wordText)) units += 18; // heavy pause at sentence end
+    else if (/[,\u0a83:;]/.test(wordText)) units += 10; // medium pause
     
     wordRanges.push({ start: totalUnits, end: totalUnits + units });
     totalUnits += units;
@@ -196,7 +202,14 @@ async function speakText(text, btn, lang) {
 
   audio.ontimeupdate = () => {
     if (!container || !audio.duration) return;
-    const currentUnitPos = (audio.currentTime / audio.duration) * totalUnits;
+
+    // Latency Compensation: 
+    // Edge-TTS often has ~200ms of silence at start, and browser playback adds ~150ms lag
+    const syncOffset = 0.32; 
+    let adjustedTime = audio.currentTime - syncOffset;
+    if (adjustedTime < 0) adjustedTime = 0;
+
+    const currentUnitPos = (adjustedTime / (audio.duration - syncOffset)) * totalUnits;
     
     // Efficiently update classes
     for (let i = 0; i < words.length; i++) {
@@ -702,8 +715,27 @@ function renderResult(result) {
     </div>`;
   }
   else if (result.type === 'full_detail') {
-    const cards = (result.schemes || []).map((s, i) => buildSchemeCard(s, i + 1)).join('');
-    content = `<div class="schemes-wrapper">${cards}</div>`;
+    const wrapper = document.createElement('div');
+    wrapper.className = 'schemes-wrapper';
+    (result.schemes || []).forEach((s, idx) => {
+      const cardHtml = buildSchemeCard(s, idx + 1);
+      const temp = document.createElement('div');
+      temp.innerHTML = cardHtml;
+      const card = temp.firstElementChild;
+      
+      // Manual binding for Listen button
+      const btn = card.querySelector('.speak-btn');
+      if (btn) {
+        btn.onclick = () => speakText(btn.dataset.tts, btn);
+      }
+      wrapper.appendChild(card);
+    });
+    content = wrapper.outerHTML; // Wait, actually I should append wrapper directly
+    row.innerHTML = avatar;
+    row.appendChild(wrapper);
+    chat.appendChild(row);
+    scrollBottom();
+    return; // handle manually
   }
   else if (result.type === 'eligibility_result') {
     const schemes = result.schemes || [];
@@ -959,24 +991,14 @@ function buildSchemeCard(s, i) {
       </div>
       <div class="divider"></div>
       <div class="scheme-field" style="grid-column: 1 / -1; display: flex; flex-direction: row; justify-content: space-between; align-items: center;">
-        <button class="speak-btn" id="${speakId}" data-speaking="0" style="margin-top:0">🔊 Listen</button>
+        <button class="speak-btn" id="${speakId}" data-speaking="0" style="margin-top:0" 
+                data-tts="${escapeHtml(fullText.replace(/\n/g, ' '))}">🔊 Listen</button>
         <div class="scheme-field">
           <span class="field-label">Official Link</span>
           ${link}
         </div>
       </div>
     </div>
-    <script>
-      (function() {
-        const btn = document.getElementById('${speakId}');
-        if (btn) {
-           btn.onclick = () => {
-             const cardBody = btn.closest('.scheme-card').querySelector('.scheme-body');
-             speakText(\`${fullText.replace(/`/g, '\\`').replace(/\n/g, ' ')}\`, btn);
-           };
-        }
-      })();
-    </script>
   </div>`;
 }
 
@@ -1055,6 +1077,13 @@ async function sendMessage() {
                 const temp = document.createElement('div');
                 temp.innerHTML = cardHtml;
                 const card = temp.firstElementChild;
+                
+                // Manual binding for Listen button
+                const btn = card.querySelector('.speak-btn');
+                if (btn) {
+                  btn.onclick = () => speakText(btn.dataset.tts, btn);
+                }
+
                 card.style.opacity = '0'; card.style.transform = 'translateY(12px)';
                 card.style.transition = 'opacity 0.3s ease, transform 0.3s ease';
                 schemesWrapper.appendChild(card);
