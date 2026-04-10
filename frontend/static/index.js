@@ -178,21 +178,50 @@ async function speakText(text, btn, lang) {
     audio.onerror = cleanup;
   }
 
-  // Word-by-word Timing Logic
+  // Character-weighted Timing Logic 
+  const words = container.querySelectorAll('.tts-word');
+  let totalUnits = 0;
+  const wordRanges = [];
+  
+  words.forEach((w) => {
+    const text = w.textContent.trim();
+    let units = text.length;
+    // Add weights for natural pauses in TTS
+    if (/[.\u0964?!]/.test(text)) units += 15; // end of sentence (incl. Hindi purn viram)
+    else if (/[,\u0a83:;]/.test(text)) units += 8; // pause
+    
+    wordRanges.push({ start: totalUnits, end: totalUnits + units });
+    totalUnits += units;
+  });
+
   audio.ontimeupdate = () => {
     if (!container || !audio.duration) return;
-    const words = container.querySelectorAll('.tts-word');
-    if (!words.length) return;
-
-    // Use total duration to find current word index
-    // We adjust the index slightly based on word count/time
-    const ratio = audio.currentTime / audio.duration;
-    const targetIdx = Math.floor(ratio * words.length);
-
-    words.forEach((w, i) => {
-      w.classList.toggle('active', i === targetIdx);
-    });
+    const currentUnitPos = (audio.currentTime / audio.duration) * totalUnits;
+    
+    // Efficiently update classes
+    for (let i = 0; i < words.length; i++) {
+       const range = wordRanges[i];
+       const active = currentUnitPos >= range.start && currentUnitPos < range.end;
+       if (active !== words[i].classList.contains('active')) {
+         words[i].classList.toggle('active', active);
+       }
+    }
   };
+
+  // Ensure 'Stop' button and Pause events clear everything
+  const fullStop = () => {
+    if (btn) {
+      btn.textContent = '🔊 Listen';
+      btn.dataset.speaking = '0';
+    }
+    if (container) container.classList.remove('reading-active');
+    document.querySelectorAll('.tts-word.active').forEach(w => w.classList.remove('active'));
+    currentAudio = null;
+  };
+
+  audio.onpause = fullStop; // Critical: If audio stops/pauses, clear highlights
+  audio.onended = fullStop;
+  audio.onerror = fullStop;
 
   try {
     await audio.play();

@@ -350,7 +350,7 @@ def ask_agent(question: str, session_id: str = "user_1", ui_lang: str = None, us
                 name = s.scheme_name if hasattr(s, "scheme_name") else s.get("scheme_name", "")
                 if name:
                     prev_names.append(name)
-        base_k = 15 if intent == "names_only" else 5
+        base_k = 5
         fetch_k = max(limit or base_k, base_k) + len(prev_names)
         schemes = fetch_schemes(question_en, chat_history, k=fetch_k, last_schemes=session["last_schemes"], minimal_extraction=(intent == "names_only"))
         
