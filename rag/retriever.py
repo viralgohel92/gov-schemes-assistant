@@ -51,6 +51,17 @@ def extract_specific_scheme_name(question: str, last_schemes: list) -> str | Non
 
     return None
 
+# Common search terms mapping for synonyms
+SYNONYMS = {
+    "housing": ["awas", "house", "home", "residential"],
+    "farmer": ["khedut", "agriculture", "kisan", "crop", "farm"],
+    "student": ["vidhyarthi", "scholarship", "education", "school", "college"],
+    "health": ["medical", "aarogya", "hospital", "medicine", "treatment"],
+    "woman": ["mahila", "lady", "female", "girl"],
+    "disability": ["divyang", "handicap", "disabled"],
+    "employment": ["job", "rozgaar", "career", "skill"],
+}
+
 def extract_search_topic(question: str) -> str:
     """Strip filler words, keep the core topic for vector DB search."""
     FILLER = {
@@ -62,27 +73,10 @@ def extract_search_topic(question: str) -> str:
         "scheme", "schemes", "yojana", "yojna", "gujarat", "government", "govt",
         "assistant", "ai", "yojana-ai", "show", "list", "fetch", "find",
     }
-    # Synonym mapping for common search terms
-    SYNONYMS = {
-        "housing": ["awas", "house", "home", "building", "residential"],
-        "farmer": ["khedut", "agriculture", "kisan", "crop", "farm"],
-        "student": ["vidhyarthi", "scholarship", "education", "school", "college"],
-        "health": ["medical", "aarogya", "hospital", "medicine", "treatment"],
-        "woman": ["mahila", "lady", "female", "girl"],
-        "disability": ["divyang", "handicap", "disabled"],
-        "employment": ["job", "rozgaar", "career", "skill"],
-    }
     
     words = re.findall(r'\b\w+\b', question.lower())
     core = [w for w in words if w not in FILLER and len(w) > 2]
-    
-    # Expand core with synonyms
-    expanded = list(core)
-    for w in core:
-        if w in SYNONYMS:
-            expanded.extend(SYNONYMS[w])
-            
-    return " ".join(expanded) if expanded else question
+    return " ".join(core) if core else question
 
 
 def _sql_fallback_search(query: str, k: int = 5):
@@ -110,24 +104,49 @@ def _sql_fallback_search(query: str, k: int = 5):
             print(f"  Query too generic: {query}. Returning empty.")
             return []
 
-        # TIER 1: Match ALL meaningful keywords (AND search)
+        # TIER 1: Match meaningful keywords (Expand synonyms as OR groups)
         filters = []
-        for kw in meaningful_keywords:
-            pattern = f"%{kw}%"
-            filters.append(or_(
-                Scheme.scheme_name.ilike(pattern),
-                Scheme.category.ilike(pattern),
-                Scheme.description.ilike(pattern)
-            ))
+        for word in meaningful_keywords:
+            # Build an OR group for this keyword and its synonyms
+            syns = [word]
+            if word in SYNONYMS:
+                syns.extend(SYNONYMS[word])
+            
+            word_filters = []
+            for s_word in syns:
+                pattern = f"%{s_word}%"
+                word_filters.append(Scheme.scheme_name.ilike(pattern))
+                word_filters.append(Scheme.category.ilike(pattern))
+                word_filters.append(Scheme.description.ilike(pattern))
+            
+            filters.append(or_(*word_filters))
         
-        from sqlalchemy import and_
-        schemes = session.query(Scheme).filter(and_(*filters)).limit(k).all()
+        from sqlalchemy import and_, desc, case
         
-        # TIER 2: If no "AND" matches, fall back to "OR" but prioritize meaningful words
+        # Build Case statement for basic ranking: Name matches are best
+        rank_conditions = []
+        for word in meaningful_keywords:
+            syns = [word] + (SYNONYMS.get(word, []))
+            for s_word in syns:
+                rank_conditions.append((Scheme.scheme_name.ilike(f"%{s_word}%"), 10))
+                rank_conditions.append((Scheme.category.ilike(f"%{s_word}%"), 5))
+
+        # Build order_by using Case
+        order_case = case(*rank_conditions, else_=0)
+        
+        schemes = session.query(Scheme).filter(and_(*filters)).order_by(desc(order_case)).limit(k).all()
+        
+        # TIER 2: If no "AND" matches, fall back to simple "OR" on all keywords + synonyms
         if not schemes:
-            print(f"  No exact AND matches for {meaningful_keywords}. Trying OR...")
+            print(f"  No exact AND matches for {meaningful_keywords}. Trying OR on expanded set...")
+            expanded_keywords = []
+            for w in meaningful_keywords:
+                expanded_keywords.append(w)
+                if w in SYNONYMS:
+                    expanded_keywords.extend(SYNONYMS[w])
+            
             filters = []
-            for kw in meaningful_keywords:
+            for kw in expanded_keywords:
                 pattern = f"%{kw}%"
                 filters.append(Scheme.scheme_name.ilike(pattern))
                 filters.append(Scheme.category.ilike(pattern))
