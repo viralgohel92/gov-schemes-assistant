@@ -22,39 +22,39 @@ engine = create_engine(db_url)
 
 def update_schema():
     with engine.connect() as conn:
-        print("🔗 Connecting to database to update schema...")
+        print("  Connecting to database to update schema...")
         # Add columns if they don't exist
         # PostgreSQL syntax for adding multiple columns if they don't exist is tricky without a complex block
         # We'll do them one by one
         try:
             conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS telegram_chat_id VARCHAR;"))
-            print("✅ Added 'telegram_chat_id' column.")
+            print("  Added 'telegram_chat_id' column.")
         except Exception as e:
-            print(f"⚠️  Note (TG Column): {e}")
+            print(f"    Note (TG Column): {e}")
             
         try:
             conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS whatsapp_number VARCHAR;"))
-            print("✅ Added 'whatsapp_number' column.")
+            print("  Added 'whatsapp_number' column.")
         except Exception as e:
-            print(f"⚠️  Note (WA Column): {e}")
+            print(f"    Note (WA Column): {e}")
 
         try:
             conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS otp VARCHAR;"))
-            print("✅ Added 'otp' column.")
+            print("  Added 'otp' column.")
         except Exception as e:
-            print(f"⚠️  Note (OTP Column): {e}")
+            print(f"    Note (OTP Column): {e}")
 
         try:
             conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS otp_expiry TIMESTAMP;"))
-            print("✅ Added 'otp_expiry' column.")
+            print("  Added 'otp_expiry' column.")
         except Exception as e:
-            print(f"⚠️  Note (OTP Expiry Column): {e}")
+            print(f"    Note (OTP Expiry Column): {e}")
 
         conn.commit()
-        print("✨ Database successfully updated!")
+        print("  Database successfully updated!")
 
 if __name__ == "__main__":
     try:
         update_schema()
     except Exception as e:
-        print(f"❌ Error during update: {e}")
+        print(f"  Error during update: {e}")

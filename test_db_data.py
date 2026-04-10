@@ -11,10 +11,10 @@ try:
     
     session = SessionLocal()
     count = session.query(Scheme).count()
-    print(f"📊 Total schemes in relational DB: {count}")
+    print(f"  Total schemes in relational DB: {count}")
     
     if count > 0:
-        print("\n📝 Sample schemes:")
+        print("\n  Sample schemes:")
         samples = session.query(Scheme).limit(5).all()
         for s in samples:
             print(f"   - {s.scheme_name} (Category: {s.category})")
@@ -24,7 +24,7 @@ try:
         pattern = f"%{search}%"
         from sqlalchemy import or_
         results = session.query(Scheme).filter(or_(Scheme.scheme_name.ilike(pattern), Scheme.category.ilike(pattern))).all()
-        print(f"\n🔍 Search for '{search}' returned {len(results)} results")
+        print(f"\n  Search for '{search}' returned {len(results)} results")
         for r in results[:3]:
             print(f"   - {r.scheme_name}")
             

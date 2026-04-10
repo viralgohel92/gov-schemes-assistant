@@ -3,11 +3,11 @@ import subprocess
 from dotenv import load_dotenv
 
 def sync_secrets():
-    print("🔐 Yojana AI — GitHub Secrets Synchronizer")
+    print("  Yojana AI   GitHub Secrets Synchronizer")
     print("=" * 45)
     
     if not os.path.exists(".env"):
-        print("❌ Error: .env file not found.")
+        print("  Error: .env file not found.")
         return
 
     load_dotenv()
@@ -38,7 +38,7 @@ def sync_secrets():
     for key in keys_to_sync:
         val = os.getenv(key)
         if val:
-            print(f"🚀 Syncing {key}...", end=" ", flush=True)
+            print(f"  Syncing {key}...", end=" ", flush=True)
             try:
                 # Use 'gh' CLI to set secret
                 # subprocess.run handles the passing of value via stdin to avoid shell escaping issues
@@ -52,16 +52,16 @@ def sync_secrets():
                 stdout, stderr = process.communicate(input=val)
                 
                 if process.returncode == 0:
-                    print("✅ DONE")
+                    print("  DONE")
                 else:
-                    print(f"❌ FAILED: {stderr.strip()}")
+                    print(f"  FAILED: {stderr.strip()}")
             except Exception as e:
-                print(f"❌ ERROR: {e}")
+                print(f"  ERROR: {e}")
         else:
-            print(f"⚠️  Skipping {key} (not in .env)")
+            print(f"    Skipping {key} (not in .env)")
 
     print("=" * 45)
-    print("🎉 All secrets synchronized to GitHub!")
+    print("  All secrets synchronized to GitHub!")
 
 if __name__ == "__main__":
     sync_secrets()

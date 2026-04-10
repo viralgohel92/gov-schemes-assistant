@@ -36,7 +36,7 @@ def send_email(to_email, subject, body_html, body_text=None):
         missing = []
         if not smtp_user: missing.append("SMTP_USERNAME/EMAIL_USER")
         if not smtp_pass: missing.append("SMTP_PASSWORD/EMAIL_PASS")
-        log.warning(f"⚠️  SMTP credentials not fully configured. Missing: {', '.join(missing)}. Skipping email.")
+        log.warning(f"    SMTP credentials not fully configured. Missing: {', '.join(missing)}. Skipping email.")
         return False
 
     try:
@@ -56,7 +56,7 @@ def send_email(to_email, subject, body_html, body_text=None):
         
         return True
     except Exception as e:
-        log.error(f"❌ Failed to send email to {to_email}: {e}")
+        log.error(f"  Failed to send email to {to_email}: {e}")
         return False
 
 def send_telegram_notification(chat_id, message):
@@ -70,7 +70,7 @@ def send_telegram_notification(chat_id, message):
         response = requests.post(url, json={"chat_id": chat_id, "text": message})
         return response.status_code == 200
     except Exception as e:
-        log.error(f"❌ Telegram error ({chat_id}): {e}")
+        log.error(f"  Telegram error ({chat_id}): {e}")
         return False
 
 def send_whatsapp_notification(phone_number, message):
@@ -87,7 +87,7 @@ def send_whatsapp_notification(phone_number, message):
         client.messages.create(body=message, from_=from_wa, to=target)
         return True
     except Exception as e:
-        log.error(f"❌ WhatsApp error ({phone_number}): {e}")
+        log.error(f"  WhatsApp error ({phone_number}): {e}")
         return False
 
 def broadcast_new_schemes(new_scheme_names, is_update=False, is_delete=False):
@@ -99,13 +99,13 @@ def broadcast_new_schemes(new_scheme_names, is_update=False, is_delete=False):
         return
 
     count = len(new_scheme_names)
-    title = f"📢 {count} New Government Scheme{'s' if count > 1 else ''} Added!"
+    title = f"  {count} New Government Scheme{'s' if count > 1 else ''} Added!"
     if is_update:
-        title = f"✨ {count} Scheme{'s' if count > 1 else ''} Updated with New Details!"
+        title = f"  {count} Scheme{'s' if count > 1 else ''} Updated with New Details!"
     elif is_delete:
-        title = f"🗑️ {count} Scheme{'s' if count > 1 else ''} Removed from Portal"
+        title = f"   {count} Scheme{'s' if count > 1 else ''} Removed from Portal"
 
-    scheme_list_str = "\n".join([f"• {name}" for name in new_scheme_names])
+    scheme_list_str = "\n".join([f"  {name}" for name in new_scheme_names])
     scheme_list_html = "<ul>" + "".join([f"<li>{name}</li>" for name in new_scheme_names]) + "</ul>"
     
     if is_delete:
@@ -141,7 +141,7 @@ def broadcast_new_schemes(new_scheme_names, is_update=False, is_delete=False):
         
         # 2. Get all users with notifications enabled
         users = db.query(User).filter(User.email_notifications == 1).all()
-        log.info(f"🚀 Broadcasting {'updates' if is_update else 'new schemes'} to {len(users)} users...")
+        log.info(f"  Broadcasting {'updates' if is_update else 'new schemes'} to {len(users)} users...")
 
         for user in users:
             intro_text = f"We have just {'discovered' if not is_update else 'updated'} <strong>{count} government scheme{'s' if count > 1 else ''}</strong> that might be relevant to you:"
@@ -160,7 +160,7 @@ def broadcast_new_schemes(new_scheme_names, is_update=False, is_delete=False):
                     {scheme_list_html}
                 </div>
                 <div style="text-align: center; margin-top: 30px;">
-                    <a href="{APP_URL}/" style="display: inline-block; padding: 12px 25px; background-color: #FF9933; color: white; text-decoration: none; border-radius: 6px; font-weight: bold; font-size: 16px; transition: background 0.3s;">🚀 {'Explore Other Schemes' if is_delete else 'Check My Eligibility'}</a>
+                    <a href="{APP_URL}/" style="display: inline-block; padding: 12px 25px; background-color: #FF9933; color: white; text-decoration: none; border-radius: 6px; font-weight: bold; font-size: 16px; transition: background 0.3s;">  {'Explore Other Schemes' if is_delete else 'Check My Eligibility'}</a>
                 </div>
                 <p style="font-size: 12px; color: #777; margin-top: 40px; border-top: 1px solid #eee; padding-top: 10px;">
                     You are receiving this because you signed up for Gujarat Government Scheme alerts. 
@@ -174,27 +174,27 @@ def broadcast_new_schemes(new_scheme_names, is_update=False, is_delete=False):
             
             send_email(
                 to_email=user.email,
-                subject=f"📢 Yojana AI Alert: {title}",
+                subject=f"  Yojana AI Alert: {title}",
                 body_html=html_content,
                 body_text=message
             )
-            log.info(f"📧 Notification sent to {user.email}")
+            log.info(f"  Notification sent to {user.email}")
             
             # --- Telegram Alert ---
             if user.telegram_chat_id:
-                tg_msg = f"📢 *{title}*\n\n{message}\n\nCheck now: {APP_URL}/"
+                tg_msg = f"  *{title}*\n\n{message}\n\nCheck now: {APP_URL}/"
                 if send_telegram_notification(user.telegram_chat_id, tg_msg):
-                    log.info(f"📲 Telegram notification sent to {user.full_name}")
+                    log.info(f"  Telegram notification sent to {user.full_name}")
             
             # --- WhatsApp Alert ---
             if user.whatsapp_number:
-                wa_msg = f"📢 *{title}*\n\n{message}\n\nCheck now: {APP_URL}/"
+                wa_msg = f"  *{title}*\n\n{message}\n\nCheck now: {APP_URL}/"
                 if send_whatsapp_notification(user.whatsapp_number, wa_msg):
-                    log.info(f"💬 WhatsApp notification sent to {user.full_name}")
+                    log.info(f"  WhatsApp notification sent to {user.full_name}")
 
     except Exception as e:
         db.rollback()
-        log.error(f"❌ Error during broadcast: {e}")
+        log.error(f"  Error during broadcast: {e}")
     finally:
         db.close()
 

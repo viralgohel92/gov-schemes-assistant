@@ -6,7 +6,7 @@ from sqlalchemy import create_engine, text
 load_dotenv()
 
 def verify():
-    print("🔍 Yojana AI — Supabase Cloud Diagnostic")
+    print("  Yojana AI   Supabase Cloud Diagnostic")
     print("=" * 45)
     
     url = os.getenv("SUPABASE_URL")
@@ -14,39 +14,39 @@ def verify():
     db_url = os.getenv("DATABASE_URL")
     
     # 1. Test REST API Connection
-    print("📡 Testing REST API Connection...", end=" ", flush=True)
+    print("  Testing REST API Connection...", end=" ", flush=True)
     try:
         supabase = create_client(url, key)
         # Try to list tables (implicitly via any query)
         supabase.table("schemes").select("count", count="exact").limit(1).execute()
-        print("✅ SUCCESS")
+        print("  SUCCESS")
     except Exception as e:
-        print(f"❌ FAILED: {e}")
+        print(f"  FAILED: {e}")
 
     # 2. Test PostgreSQL Connection
-    print("🐘 Testing PostgreSQL Connection...", end=" ", flush=True)
+    print("  Testing PostgreSQL Connection...", end=" ", flush=True)
     try:
         engine = create_engine(db_url)
         with engine.connect() as conn:
             conn.execute(text("SELECT 1"))
-        print("✅ SUCCESS")
+        print("  SUCCESS")
     except Exception as e:
-        print(f"❌ FAILED: {e}")
+        print(f"  FAILED: {e}")
 
     # 3. Check for Vector Extension
-    print("🧠 Checking for pgvector extension...", end=" ", flush=True)
+    print("  Checking for pgvector extension...", end=" ", flush=True)
     try:
         with engine.connect() as conn:
             res = conn.execute(text("SELECT extname FROM pg_extension WHERE extname = 'vector'")).fetchone()
             if res:
-                print("✅ FOUND")
+                print("  FOUND")
             else:
-                print("❌ MISSING (Run 'CREATE EXTENSION IF NOT EXISTS vector;' in Supabase SQL Editor)")
+                print("  MISSING (Run 'CREATE EXTENSION IF NOT EXISTS vector;' in Supabase SQL Editor)")
     except Exception as e:
-        print(f"❌ ERROR: {e}")
+        print(f"  ERROR: {e}")
 
     # 4. Check for 'match_documents' function
-    print("🔎 Checking for 'match_documents' function...", end=" ", flush=True)
+    print("  Checking for 'match_documents' function...", end=" ", flush=True)
     try:
         with engine.connect() as conn:
             query = """
@@ -55,11 +55,11 @@ def verify():
             """
             res = conn.execute(text(query)).fetchone()
             if res:
-                print("✅ FOUND")
+                print("  FOUND")
             else:
-                print("❌ MISSING (Needed for AI search to work)")
+                print("  MISSING (Needed for AI search to work)")
     except Exception as e:
-        print(f"❌ ERROR: {e}")
+        print(f"  ERROR: {e}")
 
     print("=" * 45)
 

@@ -1,29 +1,29 @@
 """
 sync_schemes.py
-════════════════════════════════════════════════════════════════
-Automatic sync script for Yojana AI — run via cron job.
+                                                                
+Automatic sync script for Yojana AI   run via cron job.
 
 What it does (in order):
   1. Scrapes current list of Gujarat schemes from myscheme.gov.in
   2. Validates scrape got enough schemes (Fix 1)
   3. Compares with what is already in ChromaDB
-  4. NEW schemes    → scrapes details + adds to ChromaDB + CSVs
-  5. MISSING schemes → tracks in missing_tracker.json
+  4. NEW schemes      scrapes details + adds to ChromaDB + CSVs
+  5. MISSING schemes   tracks in missing_tracker.json
                        only deletes after missing 3 runs in a row (Fix 4)
   6. Writes sync log to logs/sync_log.txt
 
 Fixes applied:
-  Fix 1 — Validate minimum scrape count before syncing
-  Fix 2 — MAX_RETRIES increased 3 → 5
-  Fix 3 — API_WAIT increased 20 → 30 seconds
-  Fix 4 — Grace period: delete only after missing 3 consecutive runs
+  Fix 1   Validate minimum scrape count before syncing
+  Fix 2   MAX_RETRIES increased 3   5
+  Fix 3   API_WAIT increased 20   30 seconds
+  Fix 4   Grace period: delete only after missing 3 consecutive runs
 
 Grace period tracker:
-  logs/missing_tracker.json  ← auto created, tracks missing counts per slug
+  logs/missing_tracker.json    auto created, tracks missing counts per slug
 
 Run manually to test:
     python sync_schemes.py
-════════════════════════════════════════════════════════════════
+                                                                
 """
 
 import os
@@ -50,10 +50,10 @@ from rag.llm import get_vector_db, get_embedding_model
 from dotenv import load_dotenv
 load_dotenv()
 
-# ── Auto-create database tables if they don't exist ───────────────────────────
+#    Auto-create database tables if they don't exist                            
 init_db()
 
-# ── Config ────────────────────────────────────────────────────────────────────
+#    Config                                                                     
 
 PROJECT_ROOT    = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
@@ -62,7 +62,7 @@ LOGS_DIR        = os.path.join(PROJECT_ROOT, "logs")
 RAW_CSV         = os.path.join(PROJECT_ROOT, "data", "raw", "gujarat_schemes.csv")
 PROCESSED_CSV   = os.path.join(PROJECT_ROOT, "data", "processed", "scraped_schemes.csv")
 
-# ── Fix 4: How many consecutive runs before deleting ─────────────────────────
+#    Fix 4: How many consecutive runs before deleting                          
 GRACE_PERIOD    = 3
 
 BASE_URL        = "https://www.myscheme.gov.in/search/state/Gujarat"
@@ -71,17 +71,17 @@ STATE_NAME      = "Gujarat"
 PAGE_SIZE       = 10
 NAV_TIMEOUT     = 90_000
 
-# ── Fix 3: Increased from 20 → 30 ────────────────────────────────────────────
+#    Fix 3: Increased from 20   30                                             
 API_WAIT        = 45
 
-# ── Fix 2: Increased from 3 → 5 ──────────────────────────────────────────────
+#    Fix 2: Increased from 3   5                                               
 MAX_RETRIES     = 5
 
 BATCH_DELAY     = 2
 DETAIL_SECTIONS = ["Details", "Benefits", "Eligibility",
                    "Application Process", "Documents Required"]
 
-# ── Fix 1: Minimum scrape threshold (95% of 643) ─────────────────────────────
+#    Fix 1: Minimum scrape threshold (Accounting for duplicates)               
 SCRAPE_MIN_THRESHOLD = 610
 
 # CSV column names
@@ -90,10 +90,10 @@ PROCESSED_CSV_FIELDS = ["scheme_name", "scheme_link", "state", "category",
                         "details", "benefits", "eligibility",
                         "application_process", "documents_required", "error"]
 
-# ─────────────────────────────────────────────────────────────────────────────
+#                                                                              
 
 
-# ── Logging setup ─────────────────────────────────────────────────────────────
+#    Logging setup                                                              
 
 os.makedirs(LOGS_DIR, exist_ok=True)
 os.makedirs(os.path.dirname(RAW_CSV), exist_ok=True)
@@ -110,12 +110,12 @@ logging.basicConfig(
 )
 log = logging.getLogger("sync")
 
-# ─────────────────────────────────────────────────────────────────────────────
+#                                                                              
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-#  FIX 4 — Missing tracker helpers (Database version)
-# ══════════════════════════════════════════════════════════════════════════════
+#                                                                               
+#  FIX 4   Missing tracker helpers (Database version)
+#                                                                               
 
 def update_missing_tracker_db(session, removed_slugs: set, live_slugs: set) -> tuple:
     """
@@ -132,10 +132,10 @@ def update_missing_tracker_db(session, removed_slugs: set, live_slugs: set) -> t
         scheme.missing_count += 1
         if scheme.missing_count >= GRACE_PERIOD:
             confirmed_delete.add(slug)
-            log.info(f"   🚨 '{slug}' missing {scheme.missing_count}/{GRACE_PERIOD} runs → confirmed delete")
+            log.info(f"     '{slug}' missing {scheme.missing_count}/{GRACE_PERIOD} runs   confirmed delete")
         else:
             still_waiting.add(slug)
-            log.info(f"   ⏳ '{slug}' missing {scheme.missing_count}/{GRACE_PERIOD} runs → waiting...")
+            log.info(f"     '{slug}' missing {scheme.missing_count}/{GRACE_PERIOD} runs   waiting...")
 
     # Reset count for slugs that REAPPEARED
     # (Any scheme with missing_count > 0 that is NOT in the removed_slugs list)
@@ -149,16 +149,16 @@ def update_missing_tracker_db(session, removed_slugs: set, live_slugs: set) -> t
                 break
         
         if match:
-            log.info(f"   ✅ '{scheme.scheme_name}' reappeared → reset missing count")
+            log.info(f"     '{scheme.scheme_name}' reappeared   reset missing count")
             scheme.missing_count = 0
 
     session.commit()
     return confirmed_delete, still_waiting
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-#  STEP 1 — Scrape current scheme list from myscheme.gov.in
-# ══════════════════════════════════════════════════════════════════════════════
+#                                                                               
+#  STEP 1   Scrape current scheme list from myscheme.gov.in
+#                                                                               
 
 def _extract_schemes_from_api(data: dict) -> list:
     schemes = []
@@ -183,7 +183,7 @@ def _extract_schemes_from_api(data: dict) -> list:
         schemes.append({
             "scheme_name": name,
             "scheme_link": f"{SCHEME_BASE}{slug}" if slug else "",
-            "slug":        slug,
+            "slug":        slug or name.lower().replace(" ", "-"),
             "state":       state_val,
             "category":    ", ".join(fields.get("schemeCategory") or []),
             "description": (fields.get("briefDescription") or "").strip(),
@@ -204,7 +204,7 @@ def scrape_live_scheme_list() -> dict:
     """Returns { slug: scheme_dict } for every Gujarat scheme on website."""
     from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
 
-    log.info("🌐 Scraping live scheme list from myscheme.gov.in …")
+    log.info("  Scraping live scheme list from myscheme.gov.in  ")
     all_schemes  = {}
     failed_pages = []
 
@@ -241,7 +241,7 @@ def scrape_live_scheme_list() -> dict:
         bpage.on("request", on_request)
         bpage.on("response", on_response)
 
-        # ── Page 1 (with retry) ───────────────────────────────────────────
+        #    Page 1 (with retry)                                            
         page1_ok = False
         for attempt in range(1, MAX_RETRIES + 1):
             state.update(target_offset=0, api_body=None, api_done=False)
@@ -258,11 +258,11 @@ def scrape_live_scheme_list() -> dict:
                 break
 
             wait = 2 ** attempt
-            log.warning(f"   ⚠️  Page 1 attempt {attempt}/{MAX_RETRIES} failed — retrying in {wait}s")
+            log.warning(f"   Page 1 attempt {attempt}/{MAX_RETRIES} failed - retrying in {wait}s")
             time.sleep(wait)
 
         if not page1_ok:
-            log.error("❌ No API response on page 1 after all retries. Aborting.")
+            log.error("No API response on page 1 after all retries. Aborting.")
             browser.close()
             return {}
 
@@ -271,11 +271,14 @@ def scrape_live_scheme_list() -> dict:
         log.info(f"   Total schemes on website: {total}  ({total_pages} pages)")
 
         for s in _extract_schemes_from_api(state["api_body"]):
-            all_schemes[s["slug"]] = s
+            slug = s["slug"]
+            if slug in all_schemes:
+                log.warning(f"       Duplicate identifier found on Page 1: {slug}")
+            all_schemes[slug] = s
 
-        # ── Pages 2..N (via Direct API Fetch) ──────────────────────────────
+        #    Pages 2..N (via Direct API Fetch)                               
         if total_pages > 1 and state["api_key"]:
-            log.info(f"   🚀 Fetching remaining {total_pages-1} pages via Direct API...")
+            log.info(f"     Fetching remaining {total_pages-1} pages via Direct API...")
             
             # Use the same API URL pattern as Page 1
             parsed_api = urlparse(state["api_url"])
@@ -304,30 +307,33 @@ def scrape_live_scheme_list() -> dict:
                     if data:
                         batch = _extract_schemes_from_api(data)
                         for s in batch:
-                            all_schemes[s["slug"]] = s
+                            slug = s["slug"]
+                            if slug in all_schemes:
+                                log.warning(f"       Duplicate identifier found on Page {page_no}: {slug}")
+                            all_schemes[slug] = s
                     else:
-                        log.warning(f"   ⚠️  Failed to fetch Page {page_no} via API")
+                        log.warning(f"       Failed to fetch Page {page_no} via API")
                         failed_pages.append(page_no)
                 except Exception as e:
-                    log.error(f"   ❌ API error on Page {page_no}: {e}")
+                    log.error(f"     API error on Page {page_no}: {e}")
                     failed_pages.append(page_no)
                 
                 time.sleep(0.2) # Micro-delay to be polite
         elif total_pages > 1:
-            log.error("❌ Could not capture API key. Skipping remaining pages.")
+            log.error("  Could not capture API key. Skipping remaining pages.")
 
         browser.close()
 
     if failed_pages:
-        log.warning(f"   ⚠️  {len(failed_pages)} pages failed: {failed_pages}")
+        log.warning(f"       {len(failed_pages)} pages failed: {failed_pages}")
 
-    log.info(f"   ✅ Scraped {len(all_schemes)} unique schemes from website")
+    log.info(f"     Scraped {len(all_schemes)} unique schemes from website")
     return all_schemes
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-#  STEP 2 — Read what is already in ChromaDB
-# ══════════════════════════════════════════════════════════════════════════════
+#                                                                               
+#  STEP 2   Read what is already in ChromaDB
+#                                                                               
 
 def get_db_scheme_slugs():
     """Returns { slug: doc_text } for every scheme in the Supabase relational DB."""
@@ -341,18 +347,18 @@ def get_db_scheme_slugs():
             # Use description/details as proxy for doc_text
             db_schemes[slug] = s.description or ""
         
-        log.info(f"   📦 Supabase DB currently has {len(db_schemes)} schemes")
+        log.info(f"     Supabase DB currently has {len(db_schemes)} schemes")
         return db_schemes
     except Exception as e:
-        log.error(f"❌ Error reading Supabase DB: {e}")
+        log.error(f"  Error reading Supabase DB: {e}")
         return {}
     finally:
         session.close()
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-#  STEP 3 — Scrape detail page for a single scheme
-# ══════════════════════════════════════════════════════════════════════════════
+#                                                                               
+#  STEP 3   Scrape detail page for a single scheme
+#                                                                               
 
 TRAILING_NOISE = re.compile(
     r"(Frequently Asked Questions.*|Sources And References.*|Feedback.*|Was this helpful.*)",
@@ -445,13 +451,13 @@ def scrape_scheme_detail(bpage, scheme: dict) -> dict:
     return result
 
 
-# ══════════════════════════════════════════════════════════════════════════════
+#                                                                               
 #  CSV HELPERS
-# ══════════════════════════════════════════════════════════════════════════════
+#                                                                               
 
 def read_csv(filepath: str) -> list:
     if not os.path.exists(filepath):
-        log.warning(f"   CSV not found: {filepath} — will create fresh.")
+        log.warning(f"   CSV not found: {filepath}   will create fresh.")
         return []
     rows = []
     with open(filepath, newline="", encoding="utf-8-sig") as f:
@@ -467,15 +473,15 @@ def write_csv(filepath: str, fields: list, rows: list):
             writer = csv.DictWriter(f, fieldnames=fields, extrasaction="ignore")
             writer.writeheader()
             writer.writerows(rows)
-        log.info(f"   💾 Saved {len(rows)} rows → {os.path.basename(filepath)}")
+        log.info(f"     Saved {len(rows)} rows   {os.path.basename(filepath)}")
     except PermissionError:
-        log.warning(f"   ⚠️  CSV is open somewhere — close it: {os.path.basename(filepath)}")
+        log.warning(f"       CSV is open somewhere   close it: {os.path.basename(filepath)}")
 
 
 def add_to_raw_csv(scheme: dict):
     rows = read_csv(RAW_CSV)
     if any(r.get("scheme_link") == scheme["scheme_link"] for r in rows):
-        log.info(f"   ⚠️  Already in raw CSV: {scheme['scheme_name']}")
+        log.info(f"       Already in raw CSV: {scheme['scheme_name']}")
         return
     rows.append({
         "scheme_name": scheme["scheme_name"],
@@ -490,7 +496,7 @@ def add_to_raw_csv(scheme: dict):
 def add_to_processed_csv(scheme: dict, details: dict):
     rows = read_csv(PROCESSED_CSV)
     if any(r.get("scheme_link") == scheme["scheme_link"] for r in rows):
-        log.info(f"   ⚠️  Already in processed CSV: {scheme['scheme_name']}")
+        log.info(f"       Already in processed CSV: {scheme['scheme_name']}")
         return
     rows.append({
         "scheme_name":         scheme["scheme_name"],
@@ -513,9 +519,9 @@ def delete_from_raw_csv(slug: str, scheme_name: str):
     rows   = [r for r in rows if f"/schemes/{slug}" not in r.get("scheme_link", "")]
     if len(rows) < before:
         write_csv(RAW_CSV, RAW_CSV_FIELDS, rows)
-        log.info(f"   🗑️  Deleted from raw CSV: {scheme_name}")
+        log.info(f"       Deleted from raw CSV: {scheme_name}")
     else:
-        log.warning(f"   ⚠️  Not found in raw CSV: {scheme_name}")
+        log.warning(f"       Not found in raw CSV: {scheme_name}")
 
 
 def delete_from_processed_csv(slug: str, scheme_name: str):
@@ -524,14 +530,14 @@ def delete_from_processed_csv(slug: str, scheme_name: str):
     rows   = [r for r in rows if f"/schemes/{slug}" not in r.get("scheme_link", "")]
     if len(rows) < before:
         write_csv(PROCESSED_CSV, PROCESSED_CSV_FIELDS, rows)
-        log.info(f"   🗑️  Deleted from processed CSV: {scheme_name}")
+        log.info(f"       Deleted from processed CSV: {scheme_name}")
     else:
-        log.warning(f"   ⚠️  Not found in processed CSV: {scheme_name}")
+        log.warning(f"       Not found in processed CSV: {scheme_name}")
 
 
-# ══════════════════════════════════════════════════════════════════════════════
+#                                                                               
 #  CHROMADB HELPERS
-# ══════════════════════════════════════════════════════════════════════════════
+#                                                                               
 
 def _build_doc_text(scheme: dict, details: dict) -> str:
     return (
@@ -577,7 +583,7 @@ def add_to_cloud_db(scheme: dict, details: dict):
             session.add(new_scheme)
         
         session.commit()
-        log.info(f"   ✅ Relational DB updated: {scheme['scheme_name']}")
+        log.info(f"     Relational DB updated: {scheme['scheme_name']}")
 
         # 2. Add to Vector DB (Cloud Index)
         try:
@@ -585,13 +591,13 @@ def add_to_cloud_db(scheme: dict, details: dict):
             if vector_db:
                 doc_text = _build_doc_text(scheme, details)
                 vector_db.add_texts([doc_text])
-                log.info(f"   ✅ Vector Index updated: {scheme['scheme_name']}")
+                log.info(f"     Vector Index updated: {scheme['scheme_name']}")
         except Exception as vec_e:
-            log.warning(f"   ⚠️ Vector Sync failed for {scheme['scheme_name']}: {vec_e}")
+            log.warning(f"      Vector Sync failed for {scheme['scheme_name']}: {vec_e}")
             log.warning("      (Continuing with relational data only)")
 
     except Exception as e:
-        log.error(f"   ❌ FATAL DB error for {scheme['scheme_name']}: {e}")
+        log.error(f"     FATAL DB error for {scheme['scheme_name']}: {e}")
         session.rollback()
     finally:
         session.close()
@@ -604,7 +610,7 @@ def delete_from_cloud_db(slug: str, scheme_name: str):
         # 1. Delete from Relational DB
         session.query(Scheme).filter(Scheme.application_link.contains(slug)).delete(synchronize_session=False)
         session.commit()
-        log.info(f"   🗑️  Deleted from Relational DB: {scheme_name}")
+        log.info(f"       Deleted from Relational DB: {scheme_name}")
 
         # 2. Delete from Vector Index
         vector_db = get_vector_db()
@@ -617,42 +623,42 @@ def delete_from_cloud_db(slug: str, scheme_name: str):
             # Using direct SQL delete via RPC if possible or via the client
             # Langchain's SupabaseVectorStore delete is IDs-based, so we filter by metadata
             supabase_client.table("documents").delete().filter("content", "ilike", f"%{slug}%").execute()
-            log.info(f"   🗑️  Deleted from Vector Index: {scheme_name}")
+            log.info(f"       Deleted from Vector Index: {scheme_name}")
     except Exception as e:
-        log.error(f"   ❌ Failed to delete {scheme_name}: {e}")
+        log.error(f"     Failed to delete {scheme_name}: {e}")
         session.rollback()
     finally:
         session.close()
 
 
-# ══════════════════════════════════════════════════════════════════════════════
+#                                                                               
 #  MAIN SYNC FUNCTION
-# ══════════════════════════════════════════════════════════════════════════════
+#                                                                               
 
 def run_sync():
     start_time = datetime.now()
     log.info("=" * 65)
-    log.info(f"🚀 Yojana AI — Cloud Sync started at {start_time.strftime('%Y-%m-%d %H:%M:%S')}")
+    log.info(f"  Yojana AI   Cloud Sync started at {start_time.strftime('%Y-%m-%d %H:%M:%S')}")
     log.info("=" * 65)
 
-    # ── Step 1: Scrape live scheme list ──────────────────────────────────────
+    #    Step 1: Scrape live scheme list                                       
     live_schemes = scrape_live_scheme_list()
     if not live_schemes:
-        log.error("❌ Could not fetch live scheme list. Aborting sync.")
+        log.error("  Could not fetch live scheme list. Aborting sync.")
         return
 
-    # ── Fix 1: Validate scrape count ─────────────────────────────────────────
+    #    Fix 1: Validate scrape count                                          
     scraped_count = len(live_schemes)
     if scraped_count < SCRAPE_MIN_THRESHOLD:
         log.warning("=" * 65)
-        log.warning(f"⚠️  SCRAPE INCOMPLETE — only got {scraped_count} schemes!")
+        log.warning(f"    SCRAPE INCOMPLETE   only got {scraped_count} schemes!")
         log.warning(f"   Skipping sync to avoid false deletes.")
         log.warning("=" * 65)
         return
 
-    log.info(f"   ✅ Scrape validated: {scraped_count} schemes")
+    log.info(f"     Scrape validated: {scraped_count} schemes")
 
-    # ── Step 2: Get DB scheme slugs (from Supabase) ──────────────────────────
+    #    Step 2: Get DB scheme slugs (from Supabase)                           
     db_slugs    = get_db_scheme_slugs()
     live_slugs  = set(live_schemes.keys())
     db_slug_set = set(db_slugs.keys())
@@ -660,25 +666,25 @@ def run_sync():
     new_slugs     = live_slugs - db_slug_set
     removed_slugs = db_slug_set - live_slugs
 
-    log.info(f"\n📊 Sync summary:")
+    log.info(f"\n  Sync summary:")
     log.info(f"   Live on website : {len(live_slugs)}")
     log.info(f"   In Cloud DB     : {len(db_slug_set)}")
-    log.info(f"   ➕ New to add   : {len(new_slugs)}")
-    log.info(f"   ➖ Missing       : {len(removed_slugs)}")
+    log.info(f"     New to add   : {len(new_slugs)}")
+    log.info(f"     Missing       : {len(removed_slugs)}")
 
-    # ── Fix 4: Grace period — check database tracker ──────────────────────────
+    #    Fix 4: Grace period   check database tracker                           
     session = SessionLocal()
     confirmed_delete, still_waiting = update_missing_tracker_db(
         session, removed_slugs, live_slugs
     )
 
-    log.info(f"\n⏳ Grace period status:")
-    log.info(f"   🚨 Confirmed delete (missing {GRACE_PERIOD}x) : {len(confirmed_delete)}")
-    log.info(f"   ⏳ Still waiting (missing < {GRACE_PERIOD}x)  : {len(still_waiting)}")
+    log.info(f"\n  Grace period status:")
+    log.info(f"     Confirmed delete (missing {GRACE_PERIOD}x) : {len(confirmed_delete)}")
+    log.info(f"     Still waiting (missing < {GRACE_PERIOD}x)  : {len(still_waiting)}")
 
-    # ── Step 3: Delete only CONFIRMED removed schemes ────────────────────────
+    #    Step 3: Delete only CONFIRMED removed schemes                         
     if confirmed_delete:
-        log.info(f"\n🗑️  Deleting {len(confirmed_delete)} confirmed removed scheme(s) …")
+        log.info(f"\n    Deleting {len(confirmed_delete)} confirmed removed scheme(s)  ")
         deleted_names = []
         for slug in confirmed_delete:
             scheme_name = slug.replace("-", " ").title()
@@ -688,11 +694,11 @@ def run_sync():
         if deleted_names:
             broadcast_new_schemes(deleted_names, is_delete=True)
     else:
-        log.info("\n✅ No confirmed deletions this run.")
+        log.info("\n  No confirmed deletions this run.")
 
-    # ── Step 4: Add new schemes ───────────────────────────────────────────────
+    #    Step 4: Add new schemes                                                
     if new_slugs:
-        log.info(f"\n➕ Adding {len(new_slugs)} new scheme(s) …")
+        log.info(f"\n  Adding {len(new_slugs)} new scheme(s)  ")
 
         from playwright.sync_api import sync_playwright
         with sync_playwright() as p:
@@ -707,7 +713,7 @@ def run_sync():
                 log.info(f"\n  [{i}/{len(new_slugs)}] {scheme['scheme_name']}")
 
                 if not scheme.get("scheme_link"):
-                    log.warning("   ⚠️  No link — skipping")
+                    log.warning("       No link   skipping")
                     continue
 
                 details = scrape_scheme_detail(bpage, scheme)
@@ -721,19 +727,19 @@ def run_sync():
 
             browser.close()
 
-        log.info(f"\n   ✅ Added: {added}  |  ❌ Failed: {len(failed)}")
+        log.info(f"\n     Added: {added}  |    Failed: {len(failed)}")
         
         if added > 0:
             new_names = [live_schemes[s]["scheme_name"] for s in sorted(new_slugs) if s in live_schemes]
             broadcast_new_schemes(new_names)
     else:
-        log.info("\n✅ No new schemes to add.")
+        log.info("\n  No new schemes to add.")
 
     session.close()
     
-    # ── Done ─────────────────────────────────────────────────────────────────
+    #    Done                                                                  
     log.info("\n" + "=" * 65)
-    log.info(f"🎉 Cloud Sync complete")
+    log.info(f"  Cloud Sync complete")
     log.info("=" * 65)
 
 
@@ -741,7 +747,7 @@ if __name__ == "__main__":
     run_sync()
 
 
-# ── Entry point ───────────────────────────────────────────────────────────────
+#    Entry point                                                                
 
 if __name__ == "__main__":
     run_sync()

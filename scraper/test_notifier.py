@@ -19,7 +19,7 @@ def test_notifications():
     load_dotenv()
     
     print("\n" + "="*50)
-    print("🚀 Yojana AI — SMTP/Notification Test Trigger")
+    print("  Yojana AI   SMTP/Notification Test Trigger")
     print("="*50)
     
     # Check secrets
@@ -27,22 +27,22 @@ def test_notifications():
     smtp_server = os.getenv("SMTP_SERVER")
     
     if not smtp_user:
-        print("❌ ERROR: SMTP_USERNAME/EMAIL_USER not found in .env")
+        print("  ERROR: SMTP_USERNAME/EMAIL_USER not found in .env")
         return
         
-    print(f"📡 Using SMTP Server: {smtp_server or 'smtp.gmail.com'}")
-    print(f"📧 From: {smtp_user}")
+    print(f"  Using SMTP Server: {smtp_server or 'smtp.gmail.com'}")
+    print(f"  From: {smtp_user}")
     
     test_names = ["Test Scheme A (AI Verified)", "Test Scheme B (Data Recovery)"]
     
-    print(f"\n📢 Triggering test broadcast for: {', '.join(test_names)}...")
+    print(f"\n  Triggering test broadcast for: {', '.join(test_names)}...")
     try:
         # We'll use is_update=True for the test to distinguish it from a real new scheme
         broadcast_new_schemes(test_names, is_update=True)
-        print("\n✅ Test Triggered! Check the logs above for 'Notification sent to...' messages.")
+        print("\n  Test Triggered! Check the logs above for 'Notification sent to...' messages.")
         print("Check your inbox (and spam folder) for the Yojana AI Alert.")
     except Exception as e:
-        print(f"\n❌ CRITICAL FAILURE during test: {e}")
+        print(f"\n  CRITICAL FAILURE during test: {e}")
     
     print("="*50 + "\n")
 

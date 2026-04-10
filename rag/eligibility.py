@@ -134,12 +134,12 @@ def python_gender_check(eligibility_text: str, user_gender: str | None) -> tuple
 
     if has_female_restriction and not has_male_restriction:
         if is_female:
-            return True, "Scheme is for women \u2014 user is Female ✓"
+            return True, "Scheme is for women \u2014 user is Female  "
         return False, "Scheme is for women only \u2014 user is not Female"
 
     if has_male_restriction and not has_female_restriction:
         if is_male:
-            return True, "Scheme is for men \u2014 user is Male ✓"
+            return True, "Scheme is for men \u2014 user is Male  "
         return False, "Scheme is for men only \u2014 user is not Male"
 
     return True, "Scheme is open to all genders"
@@ -283,7 +283,7 @@ def fetch_eligible_schemes(profile: UserProfile, k: int = 10) -> List[dict]:
         
         # SQL Fallback if vector search returns nothing
         if not docs:
-            print(f"[fetch_eligible] Vector search empty — trying SQL fallback for: {query}")
+            print(f"[fetch_eligible] Vector search empty   trying SQL fallback for: {query}")
             from rag.retriever import _sql_fallback_search
             docs = _sql_fallback_search(query, fetch_k)
         

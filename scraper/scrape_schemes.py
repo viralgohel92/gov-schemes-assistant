@@ -1,6 +1,6 @@
 """
 =============================================================
- myscheme.gov.in — Gujarat Schemes Scraper  (FINAL v7)
+ myscheme.gov.in   Gujarat Schemes Scraper  (FINAL v7)
 
  Same route-intercept strategy as v6, but now:
  - Retries timed-out pages up to MAX_RETRIES times
@@ -197,7 +197,7 @@ def fetch_offset(bpage, state, offset: int, page_no: int) -> list | None:
             if batch:
                 return batch
 
-            # API returned empty data — retry
+            # API returned empty data   retry
             print(f" [empty response, retry {attempt}/{MAX_RETRIES}]", end="", flush=True)
 
         else:
@@ -311,7 +311,7 @@ def scrape():
         bpage.on("response", on_response)
 
 
-        # ── Page 1 ─────────────────────────────────────────
+        #    Page 1                                          
 
         print("[*] Loading page 1 ...")
 
@@ -353,17 +353,17 @@ def scrape():
         # Add to master list
         all_schemes.extend(batch)
 
-        print(f"     Page  1 →  {len(batch):3d} schemes  (total: {len(all_schemes)})")
+        print(f"     Page  1    {len(batch):3d} schemes  (total: {len(all_schemes)})")
 
 
-        # ── Pages 2..N ─────────────────────────────────────
+        #    Pages 2..N                                      
 
         for page_no in range(2, total_pages + 1):
 
             # Calculate offset
             offset = (page_no - 1) * PAGE_SIZE
 
-            print(f"     Page {page_no:2d} (offset={offset:3d}) → ", end="", flush=True)
+            print(f"     Page {page_no:2d} (offset={offset:3d})   ", end="", flush=True)
 
             # Fetch schemes for that page
             batch = fetch_offset(bpage, state, offset, page_no)
@@ -371,7 +371,7 @@ def scrape():
             # If page failed
             if batch is None:
 
-                print(f" ✗ FAILED after {MAX_RETRIES} retries — will retry at end.")
+                print(f"   FAILED after {MAX_RETRIES} retries   will retry at end.")
 
                 failed_pages.append((page_no, offset))
 
@@ -386,7 +386,7 @@ def scrape():
             time.sleep(PAGE_DELAY)
 
 
-        # ── Retry failed pages ─────────────────────────────
+        #    Retry failed pages                              
 
         if failed_pages:
 
@@ -396,7 +396,7 @@ def scrape():
 
             for page_no, offset in failed_pages:
 
-                print(f"     Retry page {page_no:2d} (offset={offset:3d}) → ", end="", flush=True)
+                print(f"     Retry page {page_no:2d} (offset={offset:3d})   ", end="", flush=True)
 
                 # Wait before retry
                 time.sleep(RETRY_DELAY)
@@ -405,7 +405,7 @@ def scrape():
 
                 if batch is None:
 
-                    print(f" ✗ Still failed.")
+                    print(f"   Still failed.")
 
                     still_failed.append((page_no, offset))
 
@@ -434,7 +434,7 @@ def scrape():
 # Function to save schemes into CSV file
 def save_csv(schemes: list, path: str):
 
-    # CSV column names — "state" added after "scheme_link"
+    # CSV column names   "state" added after "scheme_link"
     fields = ["scheme_name", "scheme_link", "state", "category", "description"]
 
     # Open file for writing
@@ -449,14 +449,14 @@ def save_csv(schemes: list, path: str):
         # Write scheme rows
         writer.writerows(schemes)
 
-    print(f"\n✅  Saved {len(schemes)} schemes → {path}")
+    print(f"\n   Saved {len(schemes)} schemes   {path}")
 
 
 # Main program function
 def main():
 
     print("=" * 60)
-    print("  myscheme.gov.in — Gujarat Schemes Scraper")
+    print("  myscheme.gov.in   Gujarat Schemes Scraper")
     print("=" * 60 + "\n")
 
     # Run scraper
@@ -481,7 +481,7 @@ def main():
     # Save results
     save_csv(unique, OUTPUT_FILE)
 
-    print("\nDone! 🎉")
+    print("\nDone!  ")
 
 
 # Run main function when script executed directly

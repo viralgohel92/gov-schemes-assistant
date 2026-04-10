@@ -14,7 +14,7 @@ Output: data/processed/scraped_schemes.csv
 import os, csv, time, re
 from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
 
-# ── Paths ──────────────────────────────────────────────────────────────────────
+#    Paths                                                                       
 SCRIPT_DIR   = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(SCRIPT_DIR)
 DATA_DIR     = os.path.join(PROJECT_ROOT, "data")
@@ -81,11 +81,11 @@ def try_load_page(page, name: str, url: str) -> tuple:
     return False, url
 
 
-# ── FIXED: extract sections supporting BOTH h3 class variants ─────────────────
+#    FIXED: extract sections supporting BOTH h3 class variants                  
 def extract_sections(page) -> dict:
     return page.evaluate("""(sectionNames) => {
 
-        // ── Selector covers both class variants ───────────────────────────────
+        //    Selector covers both class variants                                
         // Variant A: font-semibold  (original working schemes)
         // Variant B: text-darkblue-900  (schemes that were failing)
         const allH3 = Array.from(document.querySelectorAll('h3'));

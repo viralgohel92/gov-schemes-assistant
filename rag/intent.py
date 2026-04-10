@@ -92,15 +92,15 @@ New user message: "{question}"
 
 Classify the intent into EXACTLY one of these:
 
-- names_only        → user wants a LIST of scheme names only. Examples: "housing scheme", "loan schemes", "show me farmer schemes", "what are education schemes", "list schemes for women", "agriculture schemes"
-- full_detail       → user wants COMPLETE details of one or more specific schemes. Examples: "tell me about PM Awas Yojana", "full details of that scheme", "give me details of the first scheme"
-- specific_field    → user wants ONE specific field like eligibility, benefits, link, or documents. Examples: "what are the benefits?", "what documents do I need?", "eligibility for this scheme"
-- eligibility_check → user provides their PERSONAL DETAILS to find matching schemes. Examples: "age 22, income 1.5 lakh, OBC, Gujarat", "I am a student, 20 years old, female, SC category"
-- eligibility_for_shown → user asks WHICH SCHEMES THEY ARE ELIGIBLE FOR (without providing new profile details). ONLY classify this when the user explicitly says things like "which scheme am I eligible for?", "am I eligible?", "which one can I apply for?", "check my eligibility"
-- conversational    → greeting, thanks, unrelated question. Examples: "hello", "thank you", "what is this chatbot"
+- names_only          user wants a LIST of scheme names only. Examples: "housing scheme", "loan schemes", "show me farmer schemes", "what are education schemes", "list schemes for women", "agriculture schemes"
+- full_detail         user wants COMPLETE details of one or more specific schemes. Examples: "tell me about PM Awas Yojana", "full details of that scheme", "give me details of the first scheme"
+- specific_field      user wants ONE specific field like eligibility, benefits, link, or documents. Examples: "what are the benefits?", "what documents do I need?", "eligibility for this scheme"
+- eligibility_check   user provides their PERSONAL DETAILS to find matching schemes. Examples: "age 22, income 1.5 lakh, OBC, Gujarat", "I am a student, 20 years old, female, SC category"
+- eligibility_for_shown   user asks WHICH SCHEMES THEY ARE ELIGIBLE FOR (without providing new profile details). ONLY classify this when the user explicitly says things like "which scheme am I eligible for?", "am I eligible?", "which one can I apply for?", "check my eligibility"
+- conversational      greeting, thanks, unrelated question. Examples: "hello", "thank you", "what is this chatbot"
 
 IMPORTANT RULES:
-1. If user types a scheme CATEGORY or TOPIC like "housing scheme", "loan scheme", "farmer scheme" → classify as names_only (NOT eligibility_for_shown)
+1. If user types a scheme CATEGORY or TOPIC like "housing scheme", "loan scheme", "farmer scheme"   classify as names_only (NOT eligibility_for_shown)
 2. Only use eligibility_for_shown when the user EXPLICITLY asks about their own eligibility
 3. eligibility_check requires the user to share personal data (age, income, caste, occupation etc.)
 
@@ -150,7 +150,7 @@ def is_followup_on_previous(question: str, chat_history: list, last_schemes: lis
 
     Rule: a followup requires an EXPLICIT reference signal:
       1. An ordinal word/number ("first", "2nd", "give me details of 3")
-      2. A short pronoun sentence ("tell me about it", "what is that") ≤ 5 words
+      2. A short pronoun sentence ("tell me about it", "what is that")   5 words
       3. The user typed a significant portion of an EXACT previously shown scheme name
 
     Anything else = fresh search = return False.
@@ -183,8 +183,8 @@ def is_followup_on_previous(question: str, chat_history: list, last_schemes: lis
         return True
 
     # \u2500\u2500 Signal 3: user typed a significant chunk of an exact scheme name \u2500\u2500\u2500\u2500\u2500
-    # Require the question to contain ≥ 3 consecutive significant words from
-    # a previously shown scheme name, OR ≥ 60% of the scheme's significant words.
+    # Require the question to contain   3 consecutive significant words from
+    # a previously shown scheme name, OR   60% of the scheme's significant words.
     # This is strict enough to avoid false positives on generic words.
     if last_schemes:
         STOP = {
@@ -200,7 +200,7 @@ def is_followup_on_previous(question: str, chat_history: list, last_schemes: lis
                 name_words = [w for w in re.findall(r'\b\w+\b', name) if len(w) > 2 and w not in STOP]
                 if not name_words: continue
                 matched = [w for w in q_words if w in name_words]
-                # Match ≥ 50% of the scheme's significant name words OR if the name is an exact substring
+                # Match   50% of the scheme's significant name words OR if the name is an exact substring
                 if (len(matched) / len(name_words) >= 0.5 and len(matched) >= 2) or name in q:
                     return True
 
@@ -227,10 +227,10 @@ def rewrite_question(question: str, chat_history: list) -> str:
     has_backref = any(re.search(p, q) for p in BACKREF_SIGNALS)
 
     if not has_backref:
-        # No back-reference → fresh topic → return as-is
+        # No back-reference   fresh topic   return as-is
         return question
 
-    # Has back-reference → rewrite using conversation history
+    # Has back-reference   rewrite using conversation history
     history_text = "\n".join([
         f"{'User' if isinstance(m, HumanMessage) else 'AI'}: {m.content}"
         for m in chat_history[-4:]
@@ -273,7 +273,7 @@ def resolve_scheme_reference(question: str, question_en: str, schemes: list) -> 
         if re.search(rf'\b{re.escape(word)}\b', q_lower) and idx < len(schemes):
             return [schemes[idx]]
 
-    # Also check native question for digits (like Gujarati ૩)
+    # Also check native question for digits (like Gujarati  )
     m = re.search(r'\b(\d{1,2})\b', question.lower())
     if m:
         idx = int(m.group(1)) - 1

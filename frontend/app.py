@@ -35,7 +35,7 @@ warnings.filterwarnings("ignore")
 app = Flask(__name__)
 app.secret_key = "your-secret-key-change-this"  # Change this in production
 
-# ── Serverless Database Management ─────────────────────────────────────────
+#    Serverless Database Management                                          
 @app.teardown_appcontext
 def shutdown_session(exception=None):
     """Ensure database sessions are closed after every request."""
@@ -44,7 +44,7 @@ def shutdown_session(exception=None):
     pass
 
 # -------------------------------------------------
-# ✅ Background warmup logic (Shared with CLI/Sync tools)
+#   Background warmup logic (Shared with CLI/Sync tools)
 # -------------------------------------------------
 
 def _warmup():
@@ -52,9 +52,9 @@ def _warmup():
         from rag.agent import warmup
         warmup()
     except Exception as e:
-        print(f"⚠️  Warmup failed (non-fatal): {e}")
+        print(f"    Warmup failed (non-fatal): {e}")
 
-# ── Background Threading ───────────────────────────────────────────────────
+#    Background Threading                                                    
 # NOTE: Background threads are disabled for Vercel/Serverless deployment.
 # We use Webhooks for Telegram instead of polling.
 # threading.Thread(target=_warmup, daemon=True).start()
@@ -312,7 +312,7 @@ def forgot_password():
         
         # Send OTP via Email
         from utils.notifier import send_email
-        subject = "🔐 Your Yojana AI Verification Code"
+        subject = "  Your Yojana AI Verification Code"
         html_body = f"""
         <div style="font-family: Arial, sans-serif; border: 1px solid #ddd; padding: 20px; border-radius: 10px; max-width: 500px;">
             <h2 style="color: #000080; text-align: center;">Reset Your Password</h2>
@@ -628,7 +628,7 @@ def delete_chat():
     finally:
         db.close()
 
-# ── WhatsApp Bot Integration ───────────────────────────────────────────────
+#    WhatsApp Bot Integration                                                
 
 @app.route("/whatsapp", methods=["POST"])
 def whatsapp_webhook():
@@ -686,9 +686,9 @@ def whatsapp_webhook():
         if user:
             user.whatsapp_number = from_number
             db.commit()
-            msg.body(f"✅ Success! Linked to *{user.full_name}*.")
+            msg.body(f"  Success! Linked to *{user.full_name}*.")
         else:
-            msg.body("❌ Account not found.")
+            msg.body("  Account not found.")
         db.close()
         return str(resp)
 
@@ -714,19 +714,19 @@ def whatsapp_webhook():
             schemes_data = chunk.get('schemes', [])
         elif chunk['type'] == 'eligibility_result':
             res_schemes = chunk.get('schemes', [])
-            full_text += f"\n\n🎯 *Found {len(res_schemes)} Eligible Schemes:*\n"
+            full_text += f"\n\n  *Found {len(res_schemes)} Eligible Schemes:*\n"
             for i, s in enumerate(res_schemes):
-                full_text += f"{i+1}. *{s.scheme_name}*\n   ✅ {s.why_eligible}\n"
+                full_text += f"{i+1}. *{s.scheme_name}*\n     {s.why_eligible}\n"
 
     # 3. Append Full Details if they exist
     if schemes_data:
-        full_text += "\n\n🏛 *Scheme Details:*"
+        full_text += "\n\n  *Scheme Details:*"
         for s in schemes_data:
-            full_text += f"\n\n🔸 *{s.get('scheme_name')}*"
-            full_text += f"\n📝 {s.get('description')}"
-            full_text += f"\n🎁 *Benefits:* {s.get('benefits')}"
+            full_text += f"\n\n  *{s.get('scheme_name')}*"
+            full_text += f"\n  {s.get('description')}"
+            full_text += f"\n  *Benefits:* {s.get('benefits')}"
             if s.get('official_link') and s.get('official_link') != "#":
-                full_text += f"\n🔗 {s.get('official_link')}"
+                full_text += f"\n  {s.get('official_link')}"
 
     if not full_text:
         full_text = "I'm sorry, I couldn't process that."
@@ -764,7 +764,7 @@ def reset():
     session["session_id"] = str(uuid.uuid4())
     return jsonify({"status": "ok"})
 
-# ── Telegram Webhook ─────────────────────────────────────────────────────
+#    Telegram Webhook                                                      
 
 @app.route("/telegram", methods=["POST"])
 async def telegram_webhook():

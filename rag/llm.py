@@ -56,11 +56,11 @@ class QueryPreprocessor(BaseModel):
 # Custom Supabase Direct Retriever
 # Bypasses langchain-community's SupabaseVectorStore which has broken
 # compatibility with supabase-py v2.x (SyncRPCFilterRequestBuilder API change).
-# Calls the match_documents RPC directly — works with any supabase-py v2 version.
+# Calls the match_documents RPC directly   works with any supabase-py v2 version.
 # -------------------------------------------------
 
 class _SupabaseDirectRetriever:
-    """Thin wrapper around the Supabase pgvector RPC — no langchain-community needed."""
+    """Thin wrapper around the Supabase pgvector RPC   no langchain-community needed."""
 
     def __init__(self, client, embedding, query_name: str):
         self._client = client
@@ -112,10 +112,10 @@ def get_preprocessor_llm():
 def get_embedding_model():
     global _embedding_model
     if _embedding_model is None:
-        print("⏳ Loading Mistral embedding model (API)...")
+        print("  Loading Mistral embedding model (API)...")
         # Use Mistral API for embeddings to save bundle size on Vercel
         _embedding_model = MistralAIEmbeddings(model="mistral-embed")
-        print("✅ Mistral embeddings ready.")
+        print("  Mistral embeddings ready.")
     return _embedding_model
 
 class NativeSupabaseVectorStore:
@@ -150,19 +150,19 @@ class NativeSupabaseVectorStore:
             try:
                 res = self.store.client.rpc(self.store.query_name, {
                     "query_embedding": embed,
-                    "match_threshold": 0.3,
+                    "match_threshold": 0.2,
                     "match_count": self.k
                 }).execute()
                 docs = []
                 if res.data:
                     for row in res.data:
                         docs.append(Document(page_content=row.get("content", ""), metadata=row.get("metadata", {})))
-                    print(f"✅ Vector search returned {len(docs)} documents")
+                    print(f"  Vector search returned {len(docs)} documents")
                 else:
-                    print(f"⚠️ Vector search returned no results for query: {query[:80]}...")
+                    print(f"   Vector search returned no results for query: {query[:80]}...")
                 return docs
             except Exception as e:
-                print(f"❌ NativeRetriever error: {e}")
+                print(f"  NativeRetriever error: {e}")
                 return []
 
 def get_vector_db():
@@ -172,7 +172,7 @@ def get_vector_db():
         supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
         
         if supabase_url and supabase_key:
-            print("🌐 Connecting to Supabase Vector Store via API (Native Wrapper)...")
+            print("  Connecting to Supabase Vector Store via API (Native Wrapper)...")
             from supabase.client import create_client
             
             try:
@@ -183,19 +183,19 @@ def get_vector_db():
                     table_name="documents",
                     query_name="match_documents"
                 )
-                print("✅ Supabase Native Vector Store ready.")
+                print("  Supabase Native Vector Store ready.")
             except Exception as e:
-                print(f"⚠️ Warning: Supabase client failed: {e}. Falling back to local.")
+                print(f"   Warning: Supabase client failed: {e}. Falling back to local.")
         
         if _vector_db is None:
-            print("📂 Using local Chroma Vector Store (Fallback)...")
+            print("  Using local Chroma Vector Store (Fallback)...")
             try:
                 from langchain_community.vectorstores import Chroma
                 # Support both relative and absolute paths for vector_db
                 persist_dir = os.path.join(os.getcwd(), "vector_db")
                 _vector_db = Chroma(persist_directory=persist_dir, embedding_function=get_embedding_model())
             except Exception as e:
-                print(f"❌ ChromaDB fallback failed: {e}")
+                print(f"  ChromaDB fallback failed: {e}")
                 return None
     return _vector_db
 
@@ -227,10 +227,10 @@ def warmup():
     """
     Pre-load models. On Vercel, this is less useful but kept for local performance.
     """
-    print("🔥 Warming up models...")
+    print("  Warming up models...")
     get_embedding_model()
     get_vector_db()
     get_llm()
     get_structured_llm()
     get_profile_llm()
-    print("✅ Warmup complete.")
+    print("  Warmup complete.")

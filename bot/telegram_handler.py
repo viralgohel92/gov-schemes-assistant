@@ -32,7 +32,7 @@ logging.getLogger("telegram").setLevel(logging.WARNING)
 logging.getLogger("apscheduler").setLevel(logging.WARNING)
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-GROQ_API_KEY   = os.getenv("GROQ_API_KEY", "")  # Optional — only for Telegram voice
+GROQ_API_KEY   = os.getenv("GROQ_API_KEY", "")  # Optional   only for Telegram voice
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = str(update.effective_chat.id)
@@ -41,17 +41,17 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     db.close()
     
     reply_keyboard = [
-        ["🌾 Schemes for farmers", "🧑‍🎓 Education scholarships"],
-        ["🏥 Healthcare schemes", "🏠 Housing scheme"],
-        ["🇺🇸 EN", "🇮🇳 HI", "🇮🇳 GU"]
+        ["  Schemes for farmers", "    Education scholarships"],
+        ["  Healthcare schemes", "  Housing scheme"],
+        ["   EN", "   HI", "   GU"]
     ]
     markup = ReplyKeyboardMarkup(reply_keyboard, resize_keyboard=True, input_field_placeholder="Ask about schemes...", one_time_keyboard=False)
 
     if user:
-        await update.message.reply_text(f"Namaste {user.full_name}! 🙏\nWelcome back to Yojana AI. How can I help you today?", reply_markup=markup)
+        await update.message.reply_text(f"Namaste {user.full_name}!  \nWelcome back to Yojana AI. How can I help you today?", reply_markup=markup)
     else:
         await update.message.reply_text(
-            "Namaste! 🙏 Welcome to *Yojana AI*.\n\nTo link your account, send: `link your-email@example.com`\nOr just ask me a question!",
+            "Namaste!   Welcome to *Yojana AI*.\n\nTo link your account, send: `link your-email@example.com`\nOr just ask me a question!",
             parse_mode='Markdown',
             reply_markup=markup
         )
@@ -93,19 +93,19 @@ async def process_text_and_reply(update: Update, text: str, chat_id: str, contex
             schemes_data = chunk.get('schemes', [])
         elif chunk['type'] == 'eligibility_result':
             res_schemes = chunk.get('schemes', [])
-            full_text += f"\n\n🎯 *Found {len(res_schemes)} Eligible Schemes:*\n"
+            full_text += f"\n\n  *Found {len(res_schemes)} Eligible Schemes:*\n"
             for i, s in enumerate(res_schemes):
-                full_text += f"{i+1}. *{s.scheme_name}*\n   ✅ {s.why_eligible}\n"
+                full_text += f"{i+1}. *{s.scheme_name}*\n     {s.why_eligible}\n"
 
     # 3. Append Full Details if they exist
     if schemes_data:
-        full_text += "\n\n🏛 *Scheme Details:*"
+        full_text += "\n\n  *Scheme Details:*"
         for s in schemes_data:
-            full_text += f"\n\n🔸 **{s.get('scheme_name')}**"
-            full_text += f"\n📝 {s.get('description')}"
-            full_text += f"\n🎁 **Benefits:** {s.get('benefits')}"
+            full_text += f"\n\n  **{s.get('scheme_name')}**"
+            full_text += f"\n  {s.get('description')}"
+            full_text += f"\n  **Benefits:** {s.get('benefits')}"
             if s.get('official_link') and s.get('official_link') != "#":
-                full_text += f"\n🔗 [Official Link]({s.get('official_link')})"
+                full_text += f"\n  [Official Link]({s.get('official_link')})"
 
     if not full_text:
         full_text = "I'm sorry, I couldn't process that."
@@ -138,24 +138,24 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if user:
             user.telegram_chat_id = chat_id
             db.commit()
-            await update.message.reply_text(f"✅ Success! Linked to *{user.full_name}*.", parse_mode='Markdown')
+            await update.message.reply_text(f"  Success! Linked to *{user.full_name}*.", parse_mode='Markdown')
         else:
-            await update.message.reply_text("❌ Account not found.")
+            await update.message.reply_text("  Account not found.")
         db.close()
         return
 
     # 2. Handle Language Selection Chips
-    if text == "🇺🇸 EN":
+    if text == "   EN":
         context.user_data['lang'] = 'en'
-        await update.message.reply_text("Language set to English. 🇺🇸 Ask your question or select a category below.")
+        await update.message.reply_text("Language set to English.    Ask your question or select a category below.")
         return
-    elif text == "🇮🇳 HI":
+    elif text == "   HI":
         context.user_data['lang'] = 'hi'
-        await update.message.reply_text("भाषा हिंदी में सेट कर दी गई है। 🇮🇳 अपना प्रश्न पूछें या नीचे से श्रेणी चुनें।")
+        await update.message.reply_text("                                                                             ")
         return
-    elif text == "🇮🇳 GU":
+    elif text == "   GU":
         context.user_data['lang'] = 'gu'
-        await update.message.reply_text("ભાષા ગુજરાતીમાં પસંદ કરાઈ છે. 🇮🇳 તમારો પ્રશ્ન પૂછો અથવા નીચેથી શ્રેણી પસંદ કરો.")
+        await update.message.reply_text("                            .                                                 .")
         return
 
     await process_text_and_reply(update, text, chat_id, context)
@@ -168,7 +168,7 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     try:
         if not GROQ_API_KEY:
-            await update.message.reply_text("⚠️ Voice not configured on this server.")
+            await update.message.reply_text("   Voice not configured on this server.")
             return
         groq_client = Groq(api_key=GROQ_API_KEY)
         with open(temp_ogg, "rb") as file:

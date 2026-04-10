@@ -64,7 +64,7 @@ def enrich_scheme_from_web(url: str, scheme_name: str, missing_fields: list) -> 
     Fetch the official scheme page and use the LLM to extract only the missing fields.
     Returns a dict of extracted values. Falls back gracefully on any error.
     """
-    print(f"🌐 Fetching live data for '{scheme_name}' → {url}")
+    print(f"  Fetching live data for '{scheme_name}'   {url}")
     page_text = _fetch_page_text(url)
     if not page_text or len(page_text) < 100:
         print(f"[enrich] Could not get usable content from {url}")
@@ -73,7 +73,7 @@ def enrich_scheme_from_web(url: str, scheme_name: str, missing_fields: list) -> 
     fields_desc = {
         "description":         "A brief overall description of what this scheme is about",
         "benefits":            "Benefits provided to beneficiaries (financial amount, subsidies, services, etc.)",
-        "eligibility":         "Who is eligible — age, income, caste, occupation, state restrictions",
+        "eligibility":         "Who is eligible   age, income, caste, occupation, state restrictions",
         "documents_required":  "List of documents needed to apply",
         "application_process": "Step-by-step instructions on how to apply",
     }
@@ -106,7 +106,7 @@ JSON:"""
         raw = re.sub(r'^```(?:json)?\s*', '', raw)
         raw = re.sub(r'\s*```$', '', raw)
         result = json.loads(raw)
-        print(f"✅ Enriched {list(result.keys())} for '{scheme_name}'")
+        print(f"  Enriched {list(result.keys())} for '{scheme_name}'")
         return result
     except Exception as e:
         print(f"[enrich_scheme] Parse error for '{scheme_name}': {e}")
@@ -130,7 +130,7 @@ def apply_visit_site_fallback(d: dict) -> dict:
         enriched = enrich_scheme_from_web(link, d.get("scheme_name", ""), missing_fields)
         for f in missing_fields:
             val = enriched.get(f, "")
-            d[f] = val if val and not is_missing(val) else f"Not available. 👉 Visit: {link}"
+            d[f] = val if val and not is_missing(val) else f"Not available.   Visit: {link}"
     else:
         for f in missing_fields:
             d[f] = "Not available."

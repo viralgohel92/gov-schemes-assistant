@@ -38,7 +38,7 @@ except Exception as e:
     # Stop execution if connection fails
     raise ConnectionError(f"FATAL: Failed to connect to Supabase: {e}")
 
-# ── Auto-create tables and pgvector extension on first run ────────────────────
+#    Auto-create tables and pgvector extension on first run                     
 def init_db():
     """Creates tables if they don't exist. Safe to run multiple times."""
     from database.models import Base
@@ -51,6 +51,6 @@ def init_db():
         Base.metadata.create_all(bind=engine)
         print("Database schema initialized (tables ready).")
     except Exception as e:
-        print(f"⚠️  Schema init warning: {e}")
+        print(f"Schema init warning: {e}")
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)

@@ -41,9 +41,9 @@ def conversational_reply_stream(question: str, chat_history: list, lang: str = "
     # \u2500\u2500 Greeting 
     if intent == "greeting":
         greetings = {
-            "en": "Hello! 👋 Welcome to Yojana AI \u2014 your Gujarat Government Scheme Assistant.\nI can help you find schemes, check eligibility, and get application details. How can I help you today?",
-            "hi": "नमस्ते! 👋 योजना AI में आपका स्वागत है।\nमैं आपको सरकारी योजनाएं खोजने, पात्रता जाँचने और आवेदन प्रक्रिया जानने में मदद कर सकता हूँ। आज मैं आपकी कैसे मदद करूँ?",
-            "gu": "નમસ્તે! 👋 યોજना AI માં આपनું સ્વાગत छे.\nहुं आपने सरकारी योजनाओ शोधवा, पात्रता चकासवा अने अरजी प्रक्रिया जाणवामां मदद करी शकुं छुं. आज हुं आपनी केवी रीते मदद करी शकुं?",
+            "en": "Hello!   Welcome to Yojana AI \u2014 your Gujarat Government Scheme Assistant.\nI can help you find schemes, check eligibility, and get application details. How can I help you today?",
+            "hi": "      !         AI                    \n                             ,                                                                                       ?",
+            "gu": "      !         AI                    .\n                            ,                                                            .                                   ?",
         }
         yield greetings.get(lang, greetings["en"])
         return
@@ -53,8 +53,8 @@ def conversational_reply_stream(question: str, chat_history: list, lang: str = "
         count = get_total_scheme_count()
         counts = {
             "en": f"There are currently **{count} government schemes** available in our Gujarat scheme database. You can ask me to find schemes by category, occupation, or check which ones you're eligible for!",
-            "hi": f"हमारे गुजरात योजना डेटाबेस में वर्तमान में **{count} सरकारी योजनाएं** उपलब्ध हैं। आप मुझसे श्रेणी, पेशे के अनुसार योजनाएं खोजने या पात्रता जाँचने के लिए कह सकते हैं!",
-            "gu": f"અમારા ગુજrāt yojanā ḍēṭābēsamāṁ hāl **{count} sarkārī yōjanāo** upalabdha chē. Tamē manē śrēṇī, vyavasāya dvārā yōjanāo śōdhvā athavā tamē kēvī pātratā dharāvō chō tē thakvavāmāṁ pūchī śakō chō!",
+            "hi": f"                                           **{count}               **                            ,                                                                  !",
+            "gu": f"         r t yojan      b sam   h l **{count} sark r  y jan o** upalabdha ch . Tam  man   r   , vyavas ya dv r  y jan o   dhv  athav  tam  k v  p trat  dhar v  ch  t  thakvav m   p ch   ak  ch !",
         }
         yield counts.get(lang, counts["en"])
         return
@@ -69,9 +69,14 @@ def conversational_reply_stream(question: str, chat_history: list, lang: str = "
         "gu": "Always reply in Gujarati (Gujarati script).",
         "en": "Reply in English.",
     }.get(lang, "Reply in English.")
-    prompt = f"""You are a helpful Gujarat government scheme assistant.
+    prompt = f"""You are Yojana AI, the official Gujarat government scheme assistant. 
 {lang_instruction}
-Help users find schemes and check eligibility.
+
+Guidelines:
+1. Provide accurate information about government schemes based on the database.
+2. If the user asks for a scheme that is currently being updated or lacks full details, explain that details are being fetched from the official portal and will be available shortly.
+3. NEVER make up eligibility criteria or benefits (hallucinate).
+4. If you don't know the answer, politely say so.
 
 Conversation:
 {history_text}
@@ -90,7 +95,7 @@ def ask_agent(question: str, session_id: str = "user_1", ui_lang: str = None, us
     chat_history = session["history"]
     awaiting_profile = session.get("awaiting_profile", False)
 
-    # ── Initialize/Update Profile from User Context (if logged in) ──────────
+    #    Initialize/Update Profile from User Context (if logged in)           
     if user_context:
         current_profile = session.get("user_profile") or UserProfile()
         updated_data = current_profile.model_dump()
@@ -101,7 +106,7 @@ def ask_agent(question: str, session_id: str = "user_1", ui_lang: str = None, us
         if not getattr(session["user_profile"], 'state', None):
             session["user_profile"].state = "Gujarat"
 
-    # ── Language detection ──
+    #    Language detection   
     detected = detect_language(question)
     
     # Priority 1: UI selection
@@ -172,14 +177,14 @@ def ask_agent(question: str, session_id: str = "user_1", ui_lang: str = None, us
                         if fetched: scheme_objects.append(fetched[0])
             
             if scheme_objects:
-                print("🔍 Checking eligibility for shown schemes...")
+                print("  Checking eligibility for shown schemes...")
                 results = check_eligibility_for_schemes(profile, scheme_objects)
                 save_to_history(session_id, question, f"Checked eligibility for {len(scheme_objects)} schemes.")
                 yield {"type": "eligibility_for_shown", "profile": profile.model_dump(), "schemes": results, "lang": lang}
                 return
 
-        # No prior shown schemes OR scheme_objects came out empty → search full DB
-        print("🔍 No prior schemes found \u2014 searching full DB for eligibility...")
+        # No prior shown schemes OR scheme_objects came out empty   search full DB
+        print("  No prior schemes found \u2014 searching full DB for eligibility...")
         try:
             eligible = fetch_eligible_schemes(profile, k=4)
         except Exception as e:
@@ -204,10 +209,10 @@ def ask_agent(question: str, session_id: str = "user_1", ui_lang: str = None, us
     if intent == "eligibility_for_shown":
         last_schemes = session.get("last_schemes", [])
 
-        # ✅ GUARD: If no schemes have been shown yet, treat this as a scheme search first.
+        #   GUARD: If no schemes have been shown yet, treat this as a scheme search first.
         # The user should see schemes before being asked for their profile.
         if not last_schemes:
-            print("ℹ️  eligibility_for_shown but no schemes shown yet \u2014 fetching schemes first...")
+            print("    eligibility_for_shown but no schemes shown yet \u2014 fetching schemes first...")
             schemes = fetch_schemes(question_en, chat_history, k=5, last_schemes=[])
             session["last_schemes"] = schemes
             if schemes:
@@ -251,7 +256,7 @@ def ask_agent(question: str, session_id: str = "user_1", ui_lang: str = None, us
         if is_fresh_search_request(question_en):
             profile = merge_gender_into_profile(profile, gender_hint)
             session["user_profile"] = profile
-            print("🔍 Searching all schemes for your eligibility...")
+            print("  Searching all schemes for your eligibility...")
             eligible = fetch_eligible_schemes(profile, k=4)
             if not eligible:
                 reply = reply_in_lang(ls("no_additional_schemes"))
@@ -264,7 +269,7 @@ def ask_agent(question: str, session_id: str = "user_1", ui_lang: str = None, us
             return
 
         if last_schemes:
-            print(f"🔍 Found {len(last_schemes)} schemes in history. Converting to full detail...")
+            print(f"  Found {len(last_schemes)} schemes in history. Converting to full detail...")
             
             full_schemes = []
             for s in last_schemes:
@@ -290,13 +295,13 @@ def ask_agent(question: str, session_id: str = "user_1", ui_lang: str = None, us
                         if fetched:
                             full_schemes.append(fetched[0])
             
-            print(f"🔍 Proceeding with eligibility check for {len(full_schemes)} full schemes.")
+            print(f"  Proceeding with eligibility check for {len(full_schemes)} full schemes.")
             results = check_eligibility_for_schemes(profile, full_schemes)
             save_to_history(session_id, question, f"Checked eligibility for {len(full_schemes)} schemes.")
             yield {"type": "eligibility_for_shown", "profile": profile.model_dump(), "schemes": results, "lang": lang}
             return
 
-        print("🔍 Searching all schemes for your eligibility...")
+        print("  Searching all schemes for your eligibility...")
         eligible = fetch_eligible_schemes(profile, k=4)
         if not eligible:
             reply = reply_in_lang(ls("no_schemes_found"))
@@ -354,13 +359,12 @@ def ask_agent(question: str, session_id: str = "user_1", ui_lang: str = None, us
         fetch_k = max(limit or base_k, base_k) + len(prev_names)
         schemes = fetch_schemes(question_en, chat_history, k=fetch_k, last_schemes=session["last_schemes"], minimal_extraction=(intent == "names_only"))
         
-        # ── Prevent Hallucinations (Echoing the Prompt) ──
-        q_lower_strip = question.lower().strip()
-        q_en_lower_strip = question_en.lower().strip()
+        #    Prevent Hallucinations (Filtering junk responses)   
+        invalid_keywords = {"scheme name", "not available", "not found", "n/a", "unknown", "scheme"}
         cleaned = []
         for s in schemes:
             s_name = (s.scheme_name if hasattr(s, "scheme_name") else s.get("scheme_name", "")).strip()
-            if s_name and s_name.lower() not in (q_lower_strip, q_en_lower_strip):
+            if s_name and s_name.lower() not in invalid_keywords:
                 cleaned.append(s)
         schemes = cleaned
         
@@ -385,7 +389,7 @@ def ask_agent(question: str, session_id: str = "user_1", ui_lang: str = None, us
             return
             
         names_text = "\n".join(f"{i+1}. {s.scheme_name}" for i, s in enumerate(selected))
-        names_text += "\n\n💡 Ask me for full details of any scheme above."
+        names_text += "\n\n  Ask me for full details of any scheme above."
         reply = reply_in_lang(names_text)
         save_to_history(session_id, question, reply)
 
@@ -402,7 +406,7 @@ def ask_agent(question: str, session_id: str = "user_1", ui_lang: str = None, us
 
     if intent == "specific_field":
         field = detect_field(question_en)
-        lines = [f"• {s.scheme_name}:\n  {apply_visit_site_fallback(s.model_dump()).get(field, 'Not Available')}"
+        lines = [f"  {s.scheme_name}:\n  {apply_visit_site_fallback(s.model_dump()).get(field, 'Not Available')}"
                  for s in schemes]
         reply_en = "\n\n".join(lines)
         reply = reply_in_lang(reply_en)
@@ -420,7 +424,7 @@ def ask_agent(question: str, session_id: str = "user_1", ui_lang: str = None, us
         yield {"type": "conversational_end"}
         return
 
-    # full_detail — Stream TEXT -> then render CARDS
+    # full_detail   Stream TEXT -> then render CARDS
     # Filter out invalid or hallucinated names
     invalid_names = {"scheme name", "not available", "not found", "none", "n/a", "unknown", "scheme"}
     selected = [s for s in schemes if s.scheme_name.lower().strip() not in invalid_names]

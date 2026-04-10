@@ -27,5 +27,5 @@ async def generate_speech(text, lang="en", output_path=None):
 
 if __name__ == "__main__":
     # Test
-    asyncio.run(generate_speech("નમસ્તે, કેમ છો?", "gu", "test_gu.mp3"))
+    asyncio.run(generate_speech("      ,       ?", "gu", "test_gu.mp3"))
     print("Done")

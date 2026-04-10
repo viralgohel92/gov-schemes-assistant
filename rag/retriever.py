@@ -20,7 +20,7 @@ CRITICAL RULES:
 
 RULES FOR FULL EXTRACTION:
 - For 'application_process', ALWAYS refactor messy blocks into a clean, numbered list (1, 2, 3...) with one step per line.
-- For 'benefits' and 'eligibility', use clear bullet points (•) if there are multiple distinct points.
+- For 'benefits' and 'eligibility', use clear bullet points ( ) if there are multiple distinct points.
 - Remove redundant filler phrases like "click here", "click", "visit link", or "here" from all fields.
 - Copy values from the context but ensure they are STRUCTURED for readability.
 - Keep scheme names, state names, and acronyms like SC/ST/OBC exactly as found.
@@ -112,17 +112,17 @@ def _sql_fallback_search(query: str, k: int = 5):
             docs.append(Document(page_content=text, metadata={}))
         
         session.close()
-        print(f"🔄 SQL fallback returned {len(docs)} documents for: {query[:60]}")
+        print(f"  SQL fallback returned {len(docs)} documents for: {query[:60]}")
         return docs
     except Exception as e:
-        print(f"❌ SQL fallback error: {e}")
+        print(f"  SQL fallback error: {e}")
         return []
 
 
 def fetch_schemes(question: str, chat_history: list, k: int = 5, last_schemes: list = None, minimal_extraction: bool = False) -> List[SchemeOutput]:
     """
     Fetches schemes from vector DB with SQL fallback.
-    rewrite_question + DB search run in PARALLEL — saves ~6s when rewrite needs LLM.
+    rewrite_question + DB search run in PARALLEL   saves ~6s when rewrite needs LLM.
     For fresh topic queries, rewrite returns instantly (no LLM), so no waiting.
     """
     specific_name = extract_specific_scheme_name(question, last_schemes or [])
@@ -134,11 +134,11 @@ def fetch_schemes(question: str, chat_history: list, k: int = 5, last_schemes: l
         # Fallback logic: "bajri (millet)" -> try "bajri", then "millet"
         if "(" in q and ")" in q:
             first_q = re.sub(r'(\w+)\s*\((.*?)\)', r'\1', q)
-            print(f"🔍 Trying primary search topic: {first_q}")
+            print(f"  Trying primary search topic: {first_q}")
             res = get_vector_db().as_retriever(search_kwargs={"k": limit}).invoke(first_q)
             if not res:
                 second_q = re.sub(r'(\w+)\s*\((.*?)\)', r'\2', q)
-                print(f"🔍 No results. Trying fallback topic: {second_q}")
+                print(f"  No results. Trying fallback topic: {second_q}")
                 res = get_vector_db().as_retriever(search_kwargs={"k": limit}).invoke(second_q)
             return res
         return get_vector_db().as_retriever(search_kwargs={"k": limit}).invoke(q)
@@ -149,9 +149,9 @@ def fetch_schemes(question: str, chat_history: list, k: int = 5, last_schemes: l
     if not specific_name and standalone.lower().strip() != question.lower().strip():
         docs = _do_search(standalone, k)
 
-    # ── SQL FALLBACK: If vector search returns nothing, use relational DB ──
+    #    SQL FALLBACK: If vector search returns nothing, use relational DB   
     if not docs:
-        print("⚠️ Vector search returned 0 docs — falling back to SQL keyword search...")
+        print("   Vector search returned 0 docs   falling back to SQL keyword search...")
         fallback_query = specific_name or search_query or question
         docs = _sql_fallback_search(fallback_query, k)
 
@@ -170,7 +170,7 @@ def fetch_schemes(question: str, chat_history: list, k: int = 5, last_schemes: l
         ("human", "Context:\n{context}\n\nQuestion: {question}")
     ])
     
-    # ── SPEED OPTIMIZATION: Branching Logic ──────────────────────────────────────────
+    #    SPEED OPTIMIZATION: Branching Logic                                           
     # If minimal_extraction=True, we use get_minimal_structured_llm().
     # This instructs the AI to ONLY find names, cutting generation time by 75%.
     if minimal_extraction:

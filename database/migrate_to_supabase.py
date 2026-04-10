@@ -10,8 +10,8 @@ from supabase.client import create_client
 import time
 
 load_dotenv()
-print(f"📍 Current Working Directory: {os.getcwd()}")
-print(f"📂 Checking for .env: {os.path.exists('.env')}")
+print(f"  Current Working Directory: {os.getcwd()}")
+print(f"  Checking for .env: {os.path.exists('.env')}")
 
 # --- Config ---
 PROCESSED_CSV = os.path.join(os.getcwd(), "data", "processed", "scraped_schemes.csv")
@@ -19,10 +19,10 @@ SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
 
 def migrate():
-    print("🚀 Starting Migration to Supabase...")
+    print("  Starting Migration to Supabase...")
     
     db_target = DATABASE_URL.split("@")[-1] if DATABASE_URL else "None"
-    print(f"🔗 Target: {db_target}")
+    print(f"  Target: {db_target}")
 
     engine = create_engine(DATABASE_URL)
     SessionLocal = sessionmaker(bind=engine)
@@ -30,7 +30,7 @@ def migrate():
 
     try:
         # 1. Clear and Prepare Tables
-        print("🗑️ Resetting tables and enabling pgvector...")
+        print("   Resetting tables and enabling pgvector...")
         with engine.connect() as conn:
             # Drop old tables
             conn.execute(text("DROP TABLE IF EXISTS documents CASCADE;"))
@@ -78,24 +78,24 @@ def migrate():
             """))
             
             conn.commit()
-            print("🏗️ Base tables and SQL functions ready.")
+            print("   Base tables and SQL functions ready.")
             # Give Supabase API a moment to refresh schema cache
-            print("⏳ Waiting for API sync...")
+            print("  Waiting for API sync...")
             time.sleep(3)
 
-        print("🏗️ Creating tables from definitions...")
+        print("   Creating tables from definitions...")
         Base.metadata.create_all(bind=engine)
 
         # 2. Ingest Relational Data
-        print(f"📖 Reading schemes from: {PROCESSED_CSV}")
+        print(f"  Reading schemes from: {PROCESSED_CSV}")
         if not os.path.exists(PROCESSED_CSV):
-            print(f"❌ Error: {PROCESSED_CSV} not found!")
+            print(f"  Error: {PROCESSED_CSV} not found!")
             return
 
         df = pd.read_csv(PROCESSED_CSV)
-        print(f"✅ Loaded {len(df)} schemes from local CSV.")
+        print(f"  Loaded {len(df)} schemes from local CSV.")
 
-        print("💾 Inserting schemes into Cloud DB...")
+        print("  Inserting schemes into Cloud DB...")
         for index, row in df.iterrows():
             scheme = Scheme(
                 scheme_name=row['scheme_name'],
@@ -112,12 +112,12 @@ def migrate():
             session.add(scheme)
         
         session.commit()
-        print(f"✅ Relational database sync complete ({len(df)} schemes).")
+        print(f"  Relational database sync complete ({len(df)} schemes).")
 
         # 3. Vector Store Initialization
-        print("\n🌐 Generating AI Vector Index (using Mistral API)...")
+        print("\n  Generating AI Vector Index (using Mistral API)...")
         if not SUPABASE_URL or not SUPABASE_KEY:
-            print("⚠️ Skipping vector sync: SUPABASE_URL or SUPABASE_KEY missing.")
+            print("   Skipping vector sync: SUPABASE_URL or SUPABASE_KEY missing.")
             return
 
         from langchain_community.vectorstores import SupabaseVectorStore
@@ -133,7 +133,7 @@ def migrate():
 
         # Batch indexing to prevent timeouts
         BATCH_SIZE = 50
-        print(f"📦 Uploading {len(docs)} AI embeddings in batches of {BATCH_SIZE}...")
+        print(f"  Uploading {len(docs)} AI embeddings in batches of {BATCH_SIZE}...")
         
         for i in range(0, len(docs), BATCH_SIZE):
             batch = docs[i : i + BATCH_SIZE]
@@ -147,13 +147,13 @@ def migrate():
                 )
                 print(f"   - Progress: {min(i+BATCH_SIZE, len(docs))}/{len(docs)}")
             except Exception as inner_e:
-                print(f"   ⚠️ Batch failed: {inner_e}")
+                print(f"      Batch failed: {inner_e}")
                 continue
 
-        print("\n🎉 SUPABASE MIGRATION COMPLETE!")
+        print("\n  SUPABASE MIGRATION COMPLETE!")
 
     except Exception as e:
-        print(f"❌ FATAL ERROR: {e}")
+        print(f"  FATAL ERROR: {e}")
         session.rollback()
     finally:
         session.close()

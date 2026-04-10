@@ -1,6 +1,6 @@
 """
 rescrape_missing.py
-────────────────────────────────────────────────────────────
+                                                            
 Finds all schemes in ChromaDB that have "Not found" for
 benefits/eligibility/etc and refetches their detail pages.
 
@@ -19,6 +19,10 @@ import re
 import json
 import time
 import sqlite3
+import sys
+
+# Ensure 'database' and 'utils' are in the path
+sys.path.append(os.path.abspath(os.curdir))
 
 from dotenv import load_dotenv
 from database.db import SessionLocal
@@ -27,7 +31,7 @@ from rag.llm import get_vector_db, get_embedding_model
 from utils.notifier import broadcast_new_schemes
 load_dotenv()
 
-# ── Config ────────────────────────────────────────────────────────────────────
+#    Config                                                                     
 
 # Always find vector_db/ relative to project root
 # (works whether run from scraper/ or project root)
@@ -37,7 +41,7 @@ VECTOR_DB_PATH = os.path.join(PROJECT_ROOT, "vector_db")
 BATCH_DELAY    = 5    # seconds between Playwright fetches
 MAX_RETRIES    = 3
 
-# ─────────────────────────────────────────────────────────────────────────────
+#                                                                              
 
 
 def get_llm():
@@ -75,7 +79,7 @@ def fetch_with_playwright(url: str, timeout: int = 25000) -> str:
             cleaned = re.sub(r'\s{2,}', ' ', text or "").strip()
             return cleaned[:10000]
     except Exception as e:
-        print(f"  ⚠️  Playwright error: {e}")
+        print(f"      Playwright error: {e}")
         return ""
 
 
@@ -86,7 +90,6 @@ def extract_fields_with_llm(page_text: str, scheme_name: str) -> dict:
 
     llm    = get_llm()
     
-    # ── JSON Robustness Helper ──────────────────────────────────────────
     def clean_json_text(text: str) -> str:
         # 1. Remove markdown backticks
         text = re.sub(r'^```(?:json)?\s*', '', text, flags=re.MULTILINE)
@@ -98,8 +101,20 @@ def extract_fields_with_llm(page_text: str, scheme_name: str) -> dict:
         if start != -1 and end != -1:
             text = text[start:end+1]
             
-        # 3. Basic cleanup for common LLM hallucinations
-        # Remove trailing commas before closing braces/brackets
+        # 3. Super-Robust Quote Fixer
+        # Replaces unescaped internal double quotes in values: "key": "val "quote" val" 
+        # using a simple lookahead for the next key/end-of-object.
+        def fix_internal_quotes(match):
+            key_part = match.group(1)
+            value_part = match.group(2)
+            # Escape internal quotes that aren't already escaped
+            cleaned_value = re.sub(r'(?<!\\)"', r'\"', value_part)
+            return f'{key_part}"{cleaned_value}"'
+
+        # This regex matches "key": "value" pairs, capturing the value separately
+        text = re.sub(r'("[\w_]+"\s*:\s*)"(.*)"(?=\s*[,}])', fix_internal_quotes, text)
+
+        # 4. Basic cleanup for common LLM hallucinations
         text = re.sub(r',\s*([\]}])', r'\1', text)
         return text.strip()
 
@@ -113,13 +128,14 @@ Webpage text:
 Extract these fields:
 - description: Overall description of the scheme
 - benefits: Benefits provided (financial, material, services)
-- eligibility: Who can apply — age, income, caste, occupation, state
+- eligibility: Who can apply   age, income, caste, occupation, state
 - documents_required: List of required documents (semicolon-separated)
 - application_process: Step-by-step how to apply (format as "Step 1: ... Step 2: ...")
 
 Rules:
 - Copy text closely from the page. Do not invent anything.
 - If a field is truly not present, use "Not available".
+- Safety: If your description or benefits contain double quotes, you MUST escape them with a backslash (\").
 - Reply ONLY with a valid JSON object, no markdown, no explanation.
 
 JSON:"""
@@ -133,13 +149,13 @@ JSON:"""
             err_str = str(e).lower()
             if "429" in err_str or "capacity" in err_str or "rate limit" in err_str:
                 sleep_time = 15 * attempt
-                print(f"  ⚠️  Rate limit (429) hit. Sleeping for {sleep_time}s... (Attempt {attempt}/3)")
+                print(f"      Rate limit (429) hit. Sleeping for {sleep_time}s... (Attempt {attempt}/3)")
                 time.sleep(sleep_time)
             else:
-                print(f"  ⚠️  LLM parse error: {e}")
+                print(f"      LLM parse error: {e}")
                 return {}
                 
-    print("  ❌ Exhausted LLM retries for this scheme.")
+    print("    Exhausted LLM retries for this scheme.")
     return {}
 
 
@@ -182,7 +198,7 @@ def get_missing_schemes() -> list:
             })
         return results
     except Exception as e:
-        print(f"❌ Error querying missing schemes: {e}")
+        print(f"  Error querying missing schemes: {e}")
         return []
     finally:
         session.close()
@@ -195,7 +211,7 @@ def update_cloud_db(scheme_id: int, fields: dict, doc_text: str):
         # 1. Update Relational DB
         scheme = session.query(Scheme).filter(Scheme.id == scheme_id).first()
         if scheme:
-            # Always stringify — LLM may return dicts/lists for some fields
+            # Always stringify   LLM may return dicts/lists for some fields
             def _to_str(val, fallback):
                 if val is None:
                     return fallback
@@ -210,7 +226,7 @@ def update_cloud_db(scheme_id: int, fields: dict, doc_text: str):
             scheme.documents_required = _to_str(fields.get("documents_required"),  scheme.documents_required)
             scheme.missing_count      = 0
             session.commit()
-            print(f"  💾 Relational DB updated")
+            print(f"    Relational DB updated")
 
         # 2. Update Vector DB (Delete old + add new)
         try:
@@ -227,36 +243,36 @@ def update_cloud_db(scheme_id: int, fields: dict, doc_text: str):
                         "content", "ilike", f"%Scheme name :{scheme.scheme_name}%"
                     ).execute()
                 except Exception as del_e:
-                    pass  # Non-critical — old vector will just become stale
+                    pass  # Non-critical   old vector will just become stale
 
                 # Add updated document
                 vector_db.add_texts([doc_text])
-                print(f"  ✅ Vector Index updated")
+                print(f"    Vector Index updated")
         except Exception as vec_e:
-            print(f"  ⚠️  Vector update skipped: {vec_e}")
+            print(f"      Vector update skipped: {vec_e}")
 
     except Exception as e:
-        print(f"  ⚠️  Cloud DB update error: {e}")
+        print(f"      Cloud DB update error: {e}")
         session.rollback()
     finally:
         session.close()
 
 
 def main():
-    """Main function — called by GitHub Actions or run manually."""
-    print("\n🚀 Yojana AI — Cloud Re-scraper for missing scheme details")
+    """Main function   called by GitHub Actions or run manually."""
+    print("\n  Yojana AI   Cloud Re-scraper for missing scheme details")
     print("=" * 60)
 
-    # ── Find schemes with missing data ───────────────────────────────────────
+    #    Find schemes with missing data                                        
     missing = get_missing_schemes()
     success       = 0
     failed        = []
     updated_names = []
 
-    print(f"📋 Found {len(missing)} schemes with missing details in Cloud DB")
+    print(f"  Found {len(missing)} schemes with missing details in Cloud DB")
 
     if not missing:
-        print("🎉 Nothing to fix! All schemes have complete data.")
+        print("  Nothing to fix! All schemes have complete data.")
         return
 
     for i, scheme in enumerate(missing, 1):
@@ -264,35 +280,35 @@ def main():
         url  = scheme["url"]
 
         print(f"[{i}/{len(missing)}] {name}")
-        print(f"  🌐 {url}")
+        print(f"    {url}")
 
-        # ── Fetch page ───────────────────────────────────────────────────────
+        #    Fetch page                                                        
         page_text = ""
         for attempt in range(1, MAX_RETRIES + 1):
             page_text = fetch_with_playwright(url)
             if len(page_text) > 200:
                 break
-            print(f"  ⚠️  Attempt {attempt} got too little content, retrying...")
+            print(f"      Attempt {attempt} got too little content, retrying...")
             time.sleep(3)
 
         if len(page_text) < 200:
-            print(f"  ❌ Could not fetch page after {MAX_RETRIES} attempts — skipping\n")
+            print(f"    Could not fetch page after {MAX_RETRIES} attempts   skipping\n")
             failed.append(name)
             continue
 
-        # ── Extract fields with LLM ──────────────────────────────────────────
-        print(f"  📄 Got {len(page_text)} chars — extracting fields with LLM...")
+        #    Extract fields with LLM                                           
+        print(f"    Got {len(page_text)} chars   extracting fields with LLM...")
         fields = extract_fields_with_llm(page_text, name)
 
         if not fields or all(
             v in ("Not available", "", "Not found")
             for v in fields.values()
         ):
-            print(f"  ❌ LLM could not extract fields — skipping\n")
+            print(f"    LLM could not extract fields   skipping\n")
             failed.append(name)
             continue
 
-        # ── Build updated document and save to ChromaDB ──────────────────────
+        #    Build updated document and save to ChromaDB                       
         new_doc = build_document_text(
             name                = name,
             description         = fields.get("description",       "Not available"),
@@ -305,19 +321,19 @@ def main():
             link                = url,
         )
 
-        print(f"  💾 Updating Cloud Database...")
+        print(f"    Updating Cloud Database...")
         update_cloud_db(scheme["id"], fields, new_doc)
         success += 1
         updated_names.append(name)
 
-        print(f"  ✅ Done\n")
+        print(f"    Done\n")
         time.sleep(BATCH_DELAY)
 
-    # ── Summary ──────────────────────────────────────────────────────────────
+    #    Summary                                                               
     print("=" * 60)
-    print(f"✅ Successfully updated: {success}/{len(missing)} schemes")
+    print(f"  Successfully updated: {success}/{len(missing)} schemes")
     if failed:
-        print(f"❌ Failed ({len(failed)}):")
+        print(f"  Failed ({len(failed)}):")
         for f in failed:
             print(f"   - {f}")
             
@@ -326,7 +342,7 @@ def main():
         from utils.notifier import broadcast_new_schemes
         broadcast_new_schemes(updated_names, is_update=True)
         
-    print("🎉 Re-scraping complete!")
+    print("  Re-scraping complete!")
 
 
 if __name__ == "__main__":
