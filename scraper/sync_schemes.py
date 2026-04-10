@@ -221,28 +221,24 @@ def scrape_live_scheme_list() -> dict:
             viewport={"width": 1280, "height": 900},
         )
         bpage = ctx.new_page()
-        state = {"target_offset": 0, "api_body": None, "api_done": False}
+        state = {"target_offset": 0, "api_body": None, "api_done": False, "api_key": None, "api_url": None}
 
-        def handle_route(route):
-            url = route.request.url
-            if re.search(r"api\.myscheme", url) and "schemes" in url:
-                parsed     = urlparse(url)
-                qs         = parse_qs(parsed.query, keep_blank_values=True)
-                qs["from"] = [str(state["target_offset"])]
-                new_qs     = urlencode({k: v[0] for k, v in qs.items()})
-                route.continue_(url=urlunparse(parsed._replace(query=new_qs)))
-            else:
-                route.continue_()
+        def on_request(request):
+            if "api.myscheme.gov.in" in request.url and "schemes" in request.url:
+                key = request.headers.get("x-api-key")
+                if key:
+                    state["api_key"] = key
 
         def on_response(resp):
-            if re.search(r"api\.myscheme", resp.url) and "schemes" in resp.url:
+            if re.search(r"api\.myscheme", resp.url) and "schemes" in resp.url and not state["api_done"]:
                 try:
                     state["api_body"] = resp.json()
+                    state["api_url"]  = resp.url
                     state["api_done"] = True
                 except Exception:
                     pass
 
-        bpage.route("**/*", handle_route)
+        bpage.on("request", on_request)
         bpage.on("response", on_response)
 
         # ── Page 1 (with retry) ───────────────────────────────────────────
@@ -277,60 +273,48 @@ def scrape_live_scheme_list() -> dict:
         for s in _extract_schemes_from_api(state["api_body"]):
             all_schemes[s["slug"]] = s
 
-        # ── Pages 2..N ────────────────────────────────────────────────────
-        for page_no in range(2, total_pages + 1):
-            offset  = (page_no - 1) * PAGE_SIZE
-            state.update(target_offset=offset, api_body=None, api_done=False)
-            page_ok = False
+        # ── Pages 2..N (via Direct API Fetch) ──────────────────────────────
+        if total_pages > 1 and state["api_key"]:
+            log.info(f"   🚀 Fetching remaining {total_pages-1} pages via Direct API...")
+            
+            # Use the same API URL pattern as Page 1
+            parsed_api = urlparse(state["api_url"])
+            base_api_qs = parse_qs(parsed_api.query)
 
-            for attempt in range(1, MAX_RETRIES + 1):
-                try:
-                    bpage.reload(wait_until="networkidle", timeout=NAV_TIMEOUT)
-                except PWTimeout:
-                    try:
-                        bpage.reload(timeout=NAV_TIMEOUT)
-                    except Exception:
-                        pass
-
-                _wait_for(state, "api_done", API_WAIT)
-
-                if state["api_done"] and state["api_body"]:
-                    batch = _extract_schemes_from_api(state["api_body"])
-                    if batch:
-                        for s in batch:
-                            all_schemes[s["slug"]] = s
-                        page_ok = True
-                        break
-
-                wait = 2 ** attempt
-                log.warning(f"   ⚠️  Page {page_no} attempt {attempt}/{MAX_RETRIES} — retrying in {wait}s")
-                time.sleep(wait)
-
-            if not page_ok:
-                failed_pages.append(page_no)
-
-            time.sleep(0.5)
-
-        # ── EXTRA RETRY PASS for failed pages ───────────────────────────
-        if failed_pages:
-            log.info(f"   🔄 Retrying {len(failed_pages)} failed pages with 10s delay...")
-            for page_no in failed_pages[:]:
+            for page_no in range(2, total_pages + 1):
                 offset = (page_no - 1) * PAGE_SIZE
-                state.update(target_offset=offset, api_body=None, api_done=False)
                 
-                time.sleep(10)
-                try:
-                    bpage.reload(wait_until="networkidle", timeout=NAV_TIMEOUT)
-                except Exception:
-                    pass
+                # Construct the page-specific API URL
+                curr_qs = {k: v[0] for k, v in base_api_qs.items()}
+                curr_qs["from"] = str(offset)
+                target_api_url = urlunparse(parsed_api._replace(query=urlencode(curr_qs)))
 
-                if _wait_for(state, "api_done", API_WAIT) and state["api_body"]:
-                    batch = _extract_schemes_from_api(state["api_body"])
-                    if batch:
+                # Perform high-speed fetch inside the browser context
+                fetch_script = f"""
+                async () => {{
+                    const resp = await fetch("{target_api_url}", {{
+                        headers: {{ "x-api-key": "{state['api_key']}" }}
+                    }});
+                    return resp.status === 200 ? await resp.json() : null;
+                }}
+                """
+                
+                try:
+                    data = bpage.evaluate(fetch_script)
+                    if data:
+                        batch = _extract_schemes_from_api(data)
                         for s in batch:
                             all_schemes[s["slug"]] = s
-                        log.info(f"   ✅ Recovered Page {page_no}")
-                        failed_pages.remove(page_no)
+                    else:
+                        log.warning(f"   ⚠️  Failed to fetch Page {page_no} via API")
+                        failed_pages.append(page_no)
+                except Exception as e:
+                    log.error(f"   ❌ API error on Page {page_no}: {e}")
+                    failed_pages.append(page_no)
+                
+                time.sleep(0.2) # Micro-delay to be polite
+        elif total_pages > 1:
+            log.error("❌ Could not capture API key. Skipping remaining pages.")
 
         browser.close()
 
