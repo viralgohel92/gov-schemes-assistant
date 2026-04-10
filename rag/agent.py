@@ -364,7 +364,10 @@ def ask_agent(question: str, session_id: str = "user_1", ui_lang: str = None, us
                 cleaned.append(s)
         schemes = cleaned
         
-        if fresh and prev_names:
+        # Only filter out previously shown schemes if the user is doing a broad search (names_only)
+        # or a fresh search for DIFFERENT schemes. Do NOT filter if they are asking for full_detail
+        # of a scheme they just saw.
+        if fresh and prev_names and intent not in ("full_detail", "specific_field"):
             schemes = [s for s in schemes if s.scheme_name not in prev_names]
         session["last_schemes"] = schemes
         session["last_limit"] = limit

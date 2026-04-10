@@ -188,22 +188,20 @@ def is_followup_on_previous(question: str, chat_history: list, last_schemes: lis
     # This is strict enough to avoid false positives on generic words.
     if last_schemes:
         STOP = {
-            "the","a","an","of","for","in","and","or","to","is","me","my","by",
-            "give","show","tell","about","what","scheme","schemes","details","detail",
-            "full","please","get","find","i","want","its","government","india",
-            "national","pradhan","mantri","yojana","rajya","gujarat","welfare",
-            "under","from","with","also","only","more","any","all","new",
+            "the","a","an","of","for","in","and","or","to","is","me","my","by","give","show","tell",
+            "about","what","scheme","schemes","details","detail","full","please","get","find","i",
+            "want","its","government","india","national","pradhan","mantri","yojana","rajya",
+            "gujarat","welfare","under","from","with","also","only","more","any","all","new","this",
         }
-        q_words = [w for w in re.findall(r'\b\w+\b', q) if len(w) > 3 and w not in STOP]
+        q_words = [w for w in re.findall(r'\b\w+\b', q) if len(w) > 2 and w not in STOP]
         if q_words:
             for s in last_schemes:
                 name = (s.scheme_name if hasattr(s, "scheme_name") else s.get("scheme_name", "")).lower()
-                name_words = [w for w in re.findall(r'\b\w+\b', name) if len(w) > 3 and w not in STOP]
-                if not name_words:
-                    continue
+                name_words = [w for w in re.findall(r'\b\w+\b', name) if len(w) > 2 and w not in STOP]
+                if not name_words: continue
                 matched = [w for w in q_words if w in name_words]
-                # Must match ≥ 60% of the scheme's significant name words
-                if len(matched) / len(name_words) >= 0.6 and len(matched) >= 2:
+                # Match ≥ 50% of the scheme's significant name words OR if the name is an exact substring
+                if (len(matched) / len(name_words) >= 0.5 and len(matched) >= 2) or name in q:
                     return True
 
     return False
