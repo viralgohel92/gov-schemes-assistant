@@ -114,6 +114,12 @@ async function speakText(text, btn, lang) {
   if (currentAudio) {
     currentAudio.pause();
     currentAudio = null;
+    // Clear any active highlighting
+    document.querySelectorAll('.bubble.reading').forEach(b => {
+      b.classList.remove('reading');
+      b.style.removeProperty('--read-progress');
+    });
+
     if (btn && btn.dataset.speaking === '1') {
       btn.dataset.speaking = '0';
       btn.textContent = '🔊 Listen';
@@ -127,21 +133,49 @@ async function speakText(text, btn, lang) {
   const audio = new Audio(url);
   currentAudio = audio;
 
+  // Find the bubble associated with this button (or response)
+  let bubble = null;
+  if (btn) {
+    bubble = btn.closest('.bubble') || btn.closest('.msg-row')?.querySelector('.bubble');
+  }
+
   if (btn) {
     btn.textContent = '⌛...';
     btn.dataset.speaking = '1';
-    audio.onplay = () => { btn.textContent = '⏹ Stop'; };
+    
+    audio.onplay = () => { 
+      btn.textContent = '⏹ Stop'; 
+      if (bubble) bubble.classList.add('reading');
+    };
+
     audio.onended = () => {
       btn.textContent = '🔊 Listen';
       btn.dataset.speaking = '0';
+      if (bubble) {
+        bubble.classList.remove('reading');
+        bubble.style.removeProperty('--read-progress');
+      }
       currentAudio = null;
     };
+
     audio.onerror = () => {
       btn.textContent = '🔊 Listen';
       btn.dataset.speaking = '0';
+      if (bubble) {
+        bubble.classList.remove('reading');
+        bubble.style.removeProperty('--read-progress');
+      }
       currentAudio = null;
     };
   }
+
+  // Handle Scanning Animation
+  audio.ontimeupdate = () => {
+    if (bubble && audio.duration) {
+      const prog = (audio.currentTime / audio.duration) * 100;
+      bubble.style.setProperty('--read-progress', `${prog}%`);
+    }
+  };
 
   try {
     await audio.play();
@@ -150,6 +184,7 @@ async function speakText(text, btn, lang) {
     if (btn) {
       btn.textContent = '🔊 Listen';
       btn.dataset.speaking = '0';
+      if (bubble) bubble.classList.remove('reading');
     }
   }
 }
@@ -742,23 +777,14 @@ function renderResult(result) {
     }
 
     if (msgToSpeak) {
+      // Small timeout to ensure DOM is fully ready
       setTimeout(() => {
-        const bubble = row.querySelector('.bubble.ai') || row.querySelector('.bubble');
-        if (bubble) {
-          bubble.style.border = '2px solid var(--saffron)';
-          bubble.style.background = '#fff8f0';
-        }
-
         const btn = row.querySelector('.speak-btn');
-        if (autoReadEnabled || btn) {
-           speakText(msgToSpeak, btn, responseLang).then(() => {
-              if (bubble) {
-                bubble.style.border = 'none';
-                bubble.style.background = 'white';
-              }
-           });
+        // Instantly start reading if autoReadEnabled is ON
+        if (autoReadEnabled) {
+           speakText(msgToSpeak, btn, responseLang);
         }
-      }, 300);
+      }, 50);
     }
   }
 }

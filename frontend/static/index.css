@@ -1118,6 +1118,34 @@ header::after {
   border-color: var(--green);
 }
 
+/* ── Follow-along Reading Highlight ── */
+.bubble.ai.reading {
+  position: relative;
+  background-image: linear-gradient(
+    to bottom,
+    rgba(255, 153, 51, 0.1) 0%,
+    rgba(255, 153, 51, 0.1) var(--read-progress, 0%),
+    rgb(255, 255, 255) var(--read-progress, 0%),
+    rgb(255, 255, 255) 100%
+  ) !important;
+  border: 2px solid var(--saffron) !important;
+  box-shadow: 0 0 12px rgba(255, 153, 51, 0.15);
+  transition: border-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+.bubble.ai.reading::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: var(--read-progress, 0%);
+  height: 2px;
+  background: var(--saffron);
+  opacity: 0.4;
+  pointer-events: none;
+  transition: top 0.1s linear;
+}
+
 /* ══════════════════════════════════════════════════════════════════
    ── STRUCTURED LISTS ──
    ══════════════════════════════════════════════════════════════════ */
