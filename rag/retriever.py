@@ -59,10 +59,30 @@ def extract_search_topic(question: str) -> str:
         "need", "a", "an", "the", "some", "any", "all", "new", "latest",
         "related", "about", "regarding", "based", "on", "my", "in", "of",
         "is", "are", "there", "do", "does", "what", "which", "how",
+        "scheme", "schemes", "yojana", "yojna", "gujarat", "government", "govt",
+        "assistant", "ai", "yojana-ai", "show", "list", "fetch", "find",
     }
+    # Synonym mapping for common search terms
+    SYNONYMS = {
+        "housing": ["awas", "house", "home", "building", "residential"],
+        "farmer": ["khedut", "agriculture", "kisan", "crop", "farm"],
+        "student": ["vidhyarthi", "scholarship", "education", "school", "college"],
+        "health": ["medical", "aarogya", "hospital", "medicine", "treatment"],
+        "woman": ["mahila", "lady", "female", "girl"],
+        "disability": ["divyang", "handicap", "disabled"],
+        "employment": ["job", "rozgaar", "career", "skill"],
+    }
+    
     words = re.findall(r'\b\w+\b', question.lower())
     core = [w for w in words if w not in FILLER and len(w) > 2]
-    return " ".join(core) if core else question
+    
+    # Expand core with synonyms
+    expanded = list(core)
+    for w in core:
+        if w in SYNONYMS:
+            expanded.extend(SYNONYMS[w])
+            
+    return " ".join(expanded) if expanded else question
 
 
 def _sql_fallback_search(query: str, k: int = 5):
@@ -78,21 +98,39 @@ def _sql_fallback_search(query: str, k: int = 5):
         from sqlalchemy import or_
         
         session = SessionLocal()
-        keywords = [w.strip() for w in query.lower().split() if len(w.strip()) > 2]
         
-        if not keywords:
-            # Just return top k schemes
-            schemes = session.query(Scheme).limit(k).all()
-        else:
-            # Build ILIKE filters for each keyword across multiple columns
+        # Identify "noise" words to avoid poisoning the SQL search
+        NOISE = {"scheme", "schemes", "yojana", "yojna", "gujarat", "govt", "government"}
+        
+        all_words = [w.strip() for w in query.lower().split() if len(w.strip()) > 2]
+        meaningful_keywords = [w for w in all_words if w not in NOISE]
+        
+        # If we have no meaningful keywords, the search is too generic
+        if not meaningful_keywords:
+            print(f"  Query too generic: {query}. Returning empty.")
+            return []
+
+        # TIER 1: Match ALL meaningful keywords (AND search)
+        filters = []
+        for kw in meaningful_keywords:
+            pattern = f"%{kw}%"
+            filters.append(or_(
+                Scheme.scheme_name.ilike(pattern),
+                Scheme.category.ilike(pattern),
+                Scheme.description.ilike(pattern)
+            ))
+        
+        from sqlalchemy import and_
+        schemes = session.query(Scheme).filter(and_(*filters)).limit(k).all()
+        
+        # TIER 2: If no "AND" matches, fall back to "OR" but prioritize meaningful words
+        if not schemes:
+            print(f"  No exact AND matches for {meaningful_keywords}. Trying OR...")
             filters = []
-            for kw in keywords:
+            for kw in meaningful_keywords:
                 pattern = f"%{kw}%"
                 filters.append(Scheme.scheme_name.ilike(pattern))
                 filters.append(Scheme.category.ilike(pattern))
-                filters.append(Scheme.description.ilike(pattern))
-                filters.append(Scheme.benefits.ilike(pattern))
-                filters.append(Scheme.eligibility.ilike(pattern))
             
             schemes = session.query(Scheme).filter(or_(*filters)).limit(k).all()
         
