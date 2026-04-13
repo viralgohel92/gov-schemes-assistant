@@ -60,6 +60,10 @@ SYNONYMS = {
     "woman": ["mahila", "lady", "female", "girl"],
     "disability": ["divyang", "handicap", "disabled"],
     "employment": ["job", "rozgaar", "career", "skill"],
+    "poultry": ["chicken", "bird", "egg", "murgapalan", "hen", "chick", "hatchery"],
+    "animal": ["pashupalan", "cattle", "cow", "buffalo", "veterinary", "livestock", "milk", "dairy"],
+    "loan": ["credit", "subsidy", "financial assistance", "sahay"],
+    "marriage": ["vivah", "lagana", "shadi", "kanyadan"],
 }
 
 def extract_search_topic(question: str) -> str:
@@ -75,7 +79,22 @@ def extract_search_topic(question: str) -> str:
     }
     
     words = re.findall(r'\b\w+\b', question.lower())
-    core = [w for w in words if w not in FILLER and len(w) > 2]
+    core = []
+    for w in words:
+        if w in FILLER: continue
+        if len(w) <= 2: continue
+        
+        # Check if the word is a synonym for a major category
+        found_category = False
+        for cat, syns in SYNONYMS.items():
+            if w == cat or w in syns:
+                core.append(cat)
+                found_category = True
+                break
+        
+        if not found_category:
+            core.append(w)
+            
     return " ".join(core) if core else question
 
 
@@ -89,12 +108,12 @@ def _sql_fallback_search(query: str, k: int = 5):
     try:
         from database.db import SessionLocal
         from database.models import Scheme
-        from sqlalchemy import or_
+        from sqlalchemy import or_, and_, desc, case
         
         session = SessionLocal()
         
         # Identify "noise" words to avoid poisoning the SQL search
-        NOISE = {"scheme", "schemes", "yojana", "yojna", "gujarat", "govt", "government"}
+        NOISE = {"scheme", "schemes", "yojana", "yojna", "gujarat", "govt", "government", "development"}
         
         all_words = [w.strip() for w in query.lower().split() if len(w.strip()) > 2]
         meaningful_keywords = [w for w in all_words if w not in NOISE]
@@ -109,11 +128,13 @@ def _sql_fallback_search(query: str, k: int = 5):
         for word in meaningful_keywords:
             # Build an OR group for this keyword and its synonyms
             syns = [word]
-            if word in SYNONYMS:
-                syns.extend(SYNONYMS[word])
+            for cat, s_list in SYNONYMS.items():
+                if word == cat or word in s_list:
+                    syns.extend(s_list)
+                    if cat not in syns: syns.append(cat)
             
             word_filters = []
-            for s_word in syns:
+            for s_word in set(syns):
                 pattern = f"%{s_word}%"
                 word_filters.append(Scheme.scheme_name.ilike(pattern))
                 word_filters.append(Scheme.category.ilike(pattern))
@@ -121,37 +142,43 @@ def _sql_fallback_search(query: str, k: int = 5):
             
             filters.append(or_(*word_filters))
         
-        from sqlalchemy import and_, desc, case
-        
         # Build Case statement for basic ranking: Name matches are best
         rank_conditions = []
         for word in meaningful_keywords:
-            syns = [word] + (SYNONYMS.get(word, []))
-            for s_word in syns:
+            syns = [word]
+            for cat, s_list in SYNONYMS.items():
+                if word == cat or word in s_list:
+                    syns.extend(s_list)
+                    if cat not in syns: syns.append(cat)
+            
+            for s_word in set(syns):
                 rank_conditions.append((Scheme.scheme_name.ilike(f"%{s_word}%"), 10))
                 rank_conditions.append((Scheme.category.ilike(f"%{s_word}%"), 5))
 
         # Build order_by using Case
         order_case = case(*rank_conditions, else_=0)
         
+        # Try finding AND matches first (more specific)
         schemes = session.query(Scheme).filter(and_(*filters)).order_by(desc(order_case)).limit(k).all()
         
         # TIER 2: If no "AND" matches, fall back to simple "OR" on all keywords + synonyms
-        if not schemes:
+        if not schemes and len(meaningful_keywords) > 1:
             print(f"  No exact AND matches for {meaningful_keywords}. Trying OR on expanded set...")
             expanded_keywords = []
             for w in meaningful_keywords:
                 expanded_keywords.append(w)
-                if w in SYNONYMS:
-                    expanded_keywords.extend(SYNONYMS[w])
+                for cat, syns in SYNONYMS.items():
+                    if w == cat or w in syns:
+                        expanded_keywords.extend(syns)
+                        if cat not in expanded_keywords: expanded_keywords.append(cat)
             
             filters = []
-            for kw in expanded_keywords:
+            for kw in set(expanded_keywords):
                 pattern = f"%{kw}%"
                 filters.append(Scheme.scheme_name.ilike(pattern))
                 filters.append(Scheme.category.ilike(pattern))
             
-            schemes = session.query(Scheme).filter(or_(*filters)).limit(k).all()
+            schemes = session.query(Scheme).filter(or_(*filters)).order_by(desc(order_case)).limit(k).all()
         
         docs = []
         for s in schemes:
@@ -174,6 +201,7 @@ def _sql_fallback_search(query: str, k: int = 5):
     except Exception as e:
         print(f"  SQL fallback error: {e}")
         return []
+
 
 
 def fetch_schemes(question: str, chat_history: list, k: int = 5, last_schemes: list = None, minimal_extraction: bool = False) -> List[SchemeOutput]:

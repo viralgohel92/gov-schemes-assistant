@@ -384,7 +384,21 @@ def ask_agent(question: str, session_id: str = "user_1", ui_lang: str = None, us
         selected = selected[:limit] if limit else selected
         
         if not selected:
-            reply = reply_in_lang(ls("no_schemes_found"))
+            # Try to be more helpful: suggest categories based on keywords
+            q_lower = question_en.lower()
+            suggestions = []
+            from rag.retriever import SYNONYMS
+            for cat, syns in SYNONYMS.items():
+                if cat in q_lower or any(s in q_lower for s in syns):
+                    suggestions.append(cat.title())
+            
+            if suggestions:
+                suggestion_text = ls("no_schemes_found") + "\n\n  " + \
+                    f"I couldn't find a match for your exact query, but I have many schemes in the **{', '.join(suggestions)}** categories. Would you like to see those?"
+                reply = reply_in_lang(suggestion_text)
+            else:
+                reply = reply_in_lang(ls("no_schemes_found"))
+                
             save_to_history(session_id, question, reply)
             yield {"type": "conversational", "reply": reply, "lang": lang}
             return
