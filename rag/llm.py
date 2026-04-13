@@ -117,7 +117,8 @@ def get_embedding_model():
         # Use BGE-Large-EN (API) for Live Vercel compatibility
         # Ensure 'Inference API' is enabled on your HF token
         _embedding_model = HuggingFaceEndpointEmbeddings(
-            model="BAAI/bge-large-en-v1.5"
+            model="BAAI/bge-large-en-v1.5",
+            huggingfacehub_api_token=os.getenv("HF_TOKEN")
         )
         print("  Hugging Face Inference embeddings ready.")
     return _embedding_model

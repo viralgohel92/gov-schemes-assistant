@@ -16,6 +16,7 @@ langchain
 langchain-mistralai
 langchain-core
 langchain-groq
+langchain-huggingface
 
 # --- External Services ---
 groq
