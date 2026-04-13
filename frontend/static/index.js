@@ -201,6 +201,35 @@ function toggleAuthModal() {
   document.getElementById('auth-modal').classList.toggle('active');
 }
 
+function toggleDarkMode() {
+  const isDark = document.body.classList.toggle('dark-mode');
+  localStorage.setItem('theme', isDark ? 'dark' : 'light');
+  updateThemeIcon(isDark);
+}
+
+function updateThemeIcon(isDark) {
+  const icon = document.getElementById('theme-icon');
+  if (icon) icon.textContent = isDark ? '☀️' : '🌙';
+}
+
+function initTheme() {
+  const savedTheme = localStorage.getItem('theme');
+  let isDark = false;
+  
+  if (savedTheme) {
+    isDark = savedTheme === 'dark';
+  } else {
+    isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+  }
+  
+  if (isDark) {
+    document.body.classList.add('dark-mode');
+  } else {
+    document.body.classList.remove('dark-mode');
+  }
+  updateThemeIcon(isDark);
+}
+
 function closeAuthModal(e) {
   if (e.target.id === 'auth-modal') toggleAuthModal();
 }
@@ -436,6 +465,7 @@ async function handleLogout(event) {
 }
 
 window.onload = async () => {
+  initTheme();
   setLang('en');
   updateUserUI();
   const res = await fetch('/me');

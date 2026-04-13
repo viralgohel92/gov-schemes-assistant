@@ -21,6 +21,24 @@
   --user-bubble: #000080;
   --shadow: 0 2px 16px rgba(0, 0, 0, 0.08);
   --sidebar-width: 280px;
+  --transition: all 0.3s ease;
+}
+
+/* Dark Mode Variables */
+body.dark-mode {
+  --saffron: #FFB366;
+  --deep-saffron: #ff8800;
+  --green: #2ccf1f;
+  --navy: #1a1a40;
+  --cream: #121220;
+  --card-bg: #1e1e2f;
+  --chat-bg: #0a0a16;
+  --border: #2a2a3a;
+  --text: #e0e0e0;
+  --muted: #a0a0b0;
+  --ai-bubble: rgba(255, 255, 255, 0.05); /* Glass feel */
+  --user-bubble: #3f3f9f;
+  --shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
 }
 
 body {
@@ -58,7 +76,7 @@ body {
    ══════════════════════════════════════════════════════════════════ */
 .sidebar {
   width: var(--sidebar-width);
-  background: #000040;
+  background: var(--navy);
   color: white;
   display: flex;
   flex-direction: column;
@@ -354,9 +372,29 @@ header::after {
 
 .header-actions {
   display: flex;
-  gap: 10px;
+  gap: 15px;
   align-items: center;
   flex-shrink: 0;
+}
+
+/* Theme Toggle */
+.theme-toggle {
+  width: 38px;
+  height: 38px;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: var(--transition);
+  font-size: 18px;
+}
+
+.theme-toggle:hover {
+  background: rgba(255, 255, 255, 0.2);
+  transform: rotate(15deg);
 }
 
 .lang-selector {
@@ -415,7 +453,9 @@ header::after {
 }
 
 .modal-content.glass {
-  background: rgba(255, 255, 255, 0.95);
+  background: var(--card-bg);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   width: 100%;
   max-width: 500px;
   border-radius: 20px;
@@ -543,7 +583,7 @@ header::after {
    ── SUGGESTIONS BAR ──
    ══════════════════════════════════════════════════════════════════ */
 .suggestions-bar {
-  background: white;
+  background: var(--card-bg);
   border-bottom: 1px solid var(--border);
   padding: 8px 16px;
   display: flex;
@@ -594,7 +634,7 @@ header::after {
 
 /* Welcome */
 .welcome-card {
-  background: white;
+  background: var(--card-bg);
   border-radius: 16px;
   padding: 32px;
   text-align: center;
@@ -603,6 +643,7 @@ header::after {
   max-width: 560px;
   margin: 20px auto 0;
   width: 100%;
+  transition: var(--transition);
 }
 
 .welcome-card .wheel {
@@ -698,6 +739,8 @@ header::after {
   border: 1px solid var(--border);
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
   border-top-left-radius: 4px;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
 }
 
 .bubble.user {
@@ -717,11 +760,12 @@ header::after {
 }
 
 .scheme-card {
-  background: white;
+  background: var(--card-bg);
   border: 1px solid var(--border);
   border-radius: 12px;
   overflow: hidden;
   box-shadow: 0 1px 8px rgba(0, 0, 0, 0.06);
+  transition: var(--transition);
 }
 
 .scheme-card-header {
@@ -845,10 +889,11 @@ header::after {
   display: flex;
   gap: 5px;
   padding: 14px 18px;
-  background: white;
+  background: var(--ai-bubble);
   border: 1px solid var(--border);
   border-radius: 14px;
   border-top-left-radius: 4px;
+  backdrop-filter: blur(8px);
 }
 
 .typing-dots span {
@@ -884,7 +929,7 @@ header::after {
    ── INPUT BAR ──
    ══════════════════════════════════════════════════════════════════ */
 .input-area {
-  background: white;
+  background: var(--card-bg);
   border-top: 1px solid var(--border);
   padding: 14px 20px;
   flex-shrink: 0;
