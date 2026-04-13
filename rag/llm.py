@@ -120,7 +120,7 @@ def get_embedding_model():
             model="BAAI/bge-large-en-v1.5",
             huggingfacehub_api_token=os.getenv("HF_TOKEN")
         )
-        print("  Hugging Face Inference embeddings ready.")
+        print("Hugging Face Inference embeddings ready.")
     return _embedding_model
 
 class NativeSupabaseVectorStore:
