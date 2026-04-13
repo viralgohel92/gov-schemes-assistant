@@ -13,7 +13,7 @@ from database.models import Scheme
 
 def generate_sitemap():
     """Generates a sitemap.xml for Yojna AI based on static routes and database schemes."""
-    base_url = "https://yojna-ai.vercel.app"
+    base_url = "https://yojna-ai-seven.vercel.app"
     sitemap_path = os.path.join(REPO_ROOT, "frontend", "static", "sitemap.xml")
     
     # Static routes

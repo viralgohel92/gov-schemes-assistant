@@ -7,4 +7,4 @@ Disallow: /tts
 Disallow: /whatsapp
 Disallow: /telegram
 
-Sitemap: https://yojna-ai.vercel.app/static/sitemap.xml
+Sitemap: https://yojna-ai-seven.vercel.app/static/sitemap.xml
