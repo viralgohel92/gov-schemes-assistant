@@ -26,8 +26,9 @@ def get_total_scheme_count() -> int:
         from database.db import SessionLocal
         from database.models import Scheme  # Assuming such a model exists for metadata
         # Fallback to counting from PG directly if vector DB count fails
+        from sqlalchemy import text
         db = SessionLocal()
-        count = db.execute("SELECT count(*) FROM documents").scalar()
+        count = db.execute(text("SELECT count(*) FROM schemes")).scalar()
         db.close()
         return count
     except Exception:
