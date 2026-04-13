@@ -27,7 +27,7 @@ sys.path.append(os.path.abspath(os.curdir))
 from dotenv import load_dotenv
 from database.db import SessionLocal
 from database.models import Scheme
-from rag.llm import get_vector_db, get_embedding_model
+from rag.llm import get_vector_db, get_embedding_model, SchemeOutput
 from utils.notifier import broadcast_new_schemes
 load_dotenv()
 
@@ -88,36 +88,10 @@ def extract_fields_with_llm(page_text: str, scheme_name: str) -> dict:
     if not page_text or len(page_text) < 150:
         return {}
 
-    llm    = get_llm()
+    # Use structured output for robustness
+    from rag.llm import get_llm
+    llm    = get_llm().with_structured_output(SchemeOutput)
     
-    def clean_json_text(text: str) -> str:
-        # 1. Remove markdown backticks
-        text = re.sub(r'^```(?:json)?\s*', '', text, flags=re.MULTILINE)
-        text = re.sub(r'\s*```$', '', text, flags=re.MULTILINE)
-        
-        # 2. Find first { and last }
-        start = text.find('{')
-        end   = text.rfind('}')
-        if start != -1 and end != -1:
-            text = text[start:end+1]
-            
-        # 3. Super-Robust Quote Fixer
-        # Replaces unescaped internal double quotes in values: "key": "val "quote" val" 
-        # using a simple lookahead for the next key/end-of-object.
-        def fix_internal_quotes(match):
-            key_part = match.group(1)
-            value_part = match.group(2)
-            # Escape internal quotes that aren't already escaped
-            cleaned_value = re.sub(r'(?<!\\)"', r'\"', value_part)
-            return f'{key_part}"{cleaned_value}"'
-
-        # This regex matches "key": "value" pairs, capturing the value separately
-        text = re.sub(r'("[\w_]+"\s*:\s*)"(.*)"(?=\s*[,}])', fix_internal_quotes, text)
-
-        # 4. Basic cleanup for common LLM hallucinations
-        text = re.sub(r',\s*([\]}])', r'\1', text)
-        return text.strip()
-
     prompt = f"""Extract information about the government scheme "{scheme_name}" from this webpage text.
 
 Webpage text:
@@ -136,15 +110,15 @@ Rules:
 - Copy text closely from the page. Do not invent anything.
 - If a field is truly not present, use "Not available".
 - Safety: If your description or benefits contain double quotes, you MUST escape them with a backslash (\").
-- Reply ONLY with a valid JSON object, no markdown, no explanation.
-
-JSON:"""
+- Reply ONLY with a valid JSON object.
+"""
 
     for attempt in range(1, 4):
         try:
-            response = llm.invoke(prompt)
-            raw      = clean_json_text(response.content.strip())
-            return json.loads(raw)
+            # Mistral handles the JSON formatting and escaping automatically with structured output
+            res = llm.invoke(prompt)
+            if res:
+                return res.dict()
         except Exception as e:
             err_str = str(e).lower()
             if "429" in err_str or "capacity" in err_str or "rate limit" in err_str:
@@ -152,10 +126,8 @@ JSON:"""
                 print(f"      Rate limit (429) hit. Sleeping for {sleep_time}s... (Attempt {attempt}/3)")
                 time.sleep(sleep_time)
             else:
-                print(f"      LLM parse error: {e}")
-                return {}
+                print(f"      Structured Extraction error: {e}")
                 
-    print("    Exhausted LLM retries for this scheme.")
     return {}
 
 
