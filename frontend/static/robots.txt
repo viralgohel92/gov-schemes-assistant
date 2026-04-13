@@ -1,0 +1,10 @@
+User-agent: *
+Allow: /
+Allow: /app
+Disallow: /ask
+Disallow: /stt
+Disallow: /tts
+Disallow: /whatsapp
+Disallow: /telegram
+
+Sitemap: https://yojna-ai.vercel.app/static/sitemap.xml
