@@ -129,6 +129,11 @@ def update_profile():
 def index():
     return render_template("landing.html")
 
+@app.route("/google57e6f733961f1ac3.html")
+def gsc_verification():
+    from flask import send_from_directory
+    return send_from_directory(os.path.join(app.root_path, 'static'), 'google57e6f733961f1ac3.html')
+
 
 @app.route("/app")
 def app_interface():
