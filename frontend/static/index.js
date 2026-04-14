@@ -49,8 +49,12 @@ async function toggleVoice() {
       // Stop all tracks to release microphone
       stream.getTracks().forEach(track => track.stop());
 
-      // Send to backend
-      await sendAudioToBackend(audioBlob);
+      // Only send if there's actual audio data
+      if (audioBlob.size > 1000) { // Tiny blobs are likely silence or noise
+        await sendAudioToBackend(audioBlob);
+      } else {
+        console.log("Audio blob too small, skipping STT.");
+      }
     };
 
     mediaRecorder.start();
@@ -68,7 +72,7 @@ async function sendAudioToBackend(blob) {
   micBtn.textContent = '⌛'; // Loading state
   
   try {
-    const res = await fetch('/stt', {
+    const res = await fetch(`/stt?lang=${currentLang}`, {
       method: 'POST',
       body: formData
     });

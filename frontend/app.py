@@ -193,6 +193,19 @@ def speech_to_text():
     temp_path = os.path.join("/tmp", temp_filename)
     audio_file.save(temp_path)
     
+    lang = request.args.get("lang", "en")
+    
+    # Extended multilingual prompt with common terms and scheme names
+    prompt_text = (
+        "This is Yojana AI, helpful assistant for Gujarat government schemes. "
+        "Keywords: Kunwarbai Nu Mameru, Vahali Dikri Yojana, Namo Saraswati, "
+        "Jan Arogya Yojana, Farmers, Education, Scholarship, Gujarat Govt, "
+        "ખેડૂત, વિદ્યાર્થી, કુંવરબાઇનું મામેરું, વહાલી દીકરી યોજના, "
+        "નમો સરસ્વતી વિદ્યા સાધના, આરોગ્ય, સહાય, ગુજરાત સરકાર, "
+        "कुंवरबाई नु मामेरू, वहाली डिक्री योजना, नमो सरस्वती, "
+        "जन आरोग्य योजना, किसान, शिक्षा, छात्रवृत्ति, गुजरात सरकार।"
+    )
+
     try:
         from groq import Groq
         groq_key = os.getenv("GROQ_API_KEY")
@@ -205,6 +218,8 @@ def speech_to_text():
             transcription = client.audio.transcriptions.create(
                 file=(temp_path, file.read()),
                 model="whisper-large-v3",
+                language=lang,
+                prompt=prompt_text,
                 response_format="json"
             )
         
