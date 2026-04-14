@@ -51,7 +51,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"Namaste {user.full_name}!  \nWelcome back to Yojana AI. How can I help you today?", reply_markup=markup)
     else:
         await update.message.reply_text(
-            "Namaste!   Welcome to *Yojana AI*.\n\nTo link your account, send: `link your-email@example.com`\nOr just ask me a question!",
+            "Namaste!  Welcome to *Yojana AI*.\n just ask me a question!",
             parse_mode='Markdown',
             reply_markup=markup
         )
@@ -91,11 +91,15 @@ async def process_text_and_reply(update: Update, text: str, chat_id: str, contex
         # 2. Collect rich scheme data
         elif chunk['type'] in ['convert_to_cards', 'full_detail']:
             schemes_data = chunk.get('schemes', [])
-        elif chunk['type'] == 'eligibility_result':
+        elif chunk['type'] in ['eligibility_result', 'eligibility_for_shown']:
             res_schemes = chunk.get('schemes', [])
-            full_text += f"\n\n  *Found {len(res_schemes)} Eligible Schemes:*\n"
-            for i, s in enumerate(res_schemes):
-                full_text += f"{i+1}. *{s.scheme_name}*\n     {s.why_eligible}\n"
+            if res_schemes:
+                full_text += "\n\n  *Matching Schemes:*\n"
+                for i, s in enumerate(res_schemes):
+                    # Robust dict access
+                    name = s.get('scheme_name') or s.get('name', 'Unknown Scheme')
+                    why  = s.get('why_eligible') or s.get('reason', '')
+                    full_text += f"{i+1}. *{name}*\n     {why}\n"
 
     # 3. Append Full Details if they exist
     if schemes_data:
@@ -124,8 +128,13 @@ async def process_text_and_reply(update: Update, text: str, chat_id: str, contex
             await update.message.reply_voice(voice=voice_file)
         if os.path.exists(audio_path): os.remove(audio_path)
     else:
-        # Telegram has a 4096 char limit
-        await update.message.reply_text(full_text[:4000], parse_mode='Markdown')
+        # Telegram has a 4096 char limit. Split into chunks to avoid truncation.
+        if len(full_text) <= 4000:
+            await update.message.reply_text(full_text, parse_mode='Markdown')
+        else:
+            # Simple chunking by length
+            for i in range(0, len(full_text), 4000):
+                await update.message.reply_text(full_text[i:i+4000], parse_mode='Markdown')
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
