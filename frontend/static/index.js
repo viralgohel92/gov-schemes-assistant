@@ -4,91 +4,67 @@ const sendBtn = document.getElementById('send-btn');
 const micBtn = document.getElementById('mic-btn');
 const inputHint = document.getElementById('input-hint');
 
-// ── Voice Input (Speech-to-Text via Whisper) ────────────────────────────────
-let mediaRecorder = null;
-let audioChunks = [];
+// ── Voice Input (Web Speech API - Native Browser STT) ────────────────────────
+let recognition = null;
 let isListening = false;
 
 const VOICE_HINT = {
-  en: { idle: 'Press Enter to send · Shift+Enter for new line', listening: '🔴 Recording… click again to stop' },
-  hi: { idle: 'Enter दबाएं भेजने के लिए · Shift+Enter नई लाइन के लिए', listening: '🔴 रिकॉर्ड हो रहा है… रुकने के लिए क्लिक करें' },
-  gu: { idle: 'Enter દબાવો મોકલવા માટે · Shift+Enter નવી લીટી માટે', listening: '🔴 રેકોર્ડિંગ… રોકવા માટે ફરીથી ક્લિક કરો' },
+  en: { idle: 'Press Enter to send · Shift+Enter for new line', listening: '🔴 Listening… click again to stop' },
+  hi: { idle: 'Enter दबाएं भेजने के लिए · Shift+Enter नई लाइन के लिए', listening: '🔴 सुन रहा हूँ… रुकने के लिए क्लिक करें' },
+  gu: { idle: 'Enter દબાવો મોકલવા માટે · Shift+Enter નવી લીટી માટે', listening: '🔴 સાંભળી રહ્યો છું… રોકવા માટે ફરીથી ક્લિક કરો' },
 };
 
-async function toggleVoice() {
+function toggleVoice() {
   if (isListening) {
-    if (mediaRecorder) mediaRecorder.stop();
+    if (recognition) recognition.stop();
     return;
   }
 
-  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-    alert("Your browser does not support audio recording.");
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SpeechRecognition) {
+    alert("Your browser does not support Speech Recognition. Please use Chrome or Edge.");
     return;
   }
 
   try {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    mediaRecorder = new MediaRecorder(stream);
-    audioChunks = [];
+    recognition = new SpeechRecognition();
+    const codes = { en: 'en-IN', hi: 'hi-IN', gu: 'gu-IN' };
+    recognition.lang = codes[currentLang] || 'en-IN';
+    recognition.interimResults = true;
+    recognition.continuous = false;
 
-    mediaRecorder.ondataavailable = (e) => {
-      if (e.data.size > 0) audioChunks.push(e.data);
-    };
-
-    mediaRecorder.onstart = () => {
+    recognition.onstart = () => {
       isListening = true;
       micBtn.textContent = '⏹';
       micBtn.classList.add('listening');
-      input.placeholder = VOICE_HINT[currentLang]?.listening || '🔴 Recording…';
+      input.placeholder = VOICE_HINT[currentLang]?.listening || '🔴 Listening…';
     };
 
-    mediaRecorder.onstop = async () => {
-      const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
-      stopVoiceUI();
+    recognition.onresult = (event) => {
+      let currentTranscript = '';
+      for (let i = event.resultIndex; i < event.results.length; ++i) {
+        currentTranscript += event.results[i][0].transcript;
+      }
       
-      // Stop all tracks to release microphone
-      stream.getTracks().forEach(track => track.stop());
-
-      // Only send if there's actual audio data
-      if (audioBlob.size > 1000) { // Tiny blobs are likely silence or noise
-        await sendAudioToBackend(audioBlob);
-      } else {
-        console.log("Audio blob too small, skipping STT.");
+      if (currentTranscript) {
+        input.value = currentTranscript;
+        autoResize(input);
       }
     };
 
-    mediaRecorder.start();
+    recognition.onend = () => {
+      stopVoiceUI();
+    };
+
+    recognition.onerror = (event) => {
+      console.error("Speech Recognition Error:", event.error);
+      stopVoiceUI();
+    };
+
+    recognition.start();
   } catch (err) {
-    console.error("Error accessing microphone:", err);
-    alert("Microphone access denied or error occurred.");
+    console.error("Recognition Start Error:", err);
     stopVoiceUI();
-  }
-}
-
-async function sendAudioToBackend(blob) {
-  const formData = new FormData();
-  formData.append('audio', blob, 'query.webm');
-
-  micBtn.textContent = '⌛'; // Loading state
-  
-  try {
-    const res = await fetch(`/stt?lang=${currentLang}`, {
-      method: 'POST',
-      body: formData
-    });
-    const data = await res.json();
-    if (data.text) {
-      input.value = data.text;
-      autoResize(input);
-      // Optional: auto-send? 
-      // sendMessage(); 
-    } else if (data.error) {
-      console.error("STT Error:", data.error);
-    }
-  } catch (err) {
-    console.error("Failed to send audio:", err);
-  } finally {
-    micBtn.textContent = '🎙️';
   }
 }
 
@@ -98,7 +74,7 @@ function stopVoiceUI() {
   micBtn.classList.remove('listening');
   const L = LANG_UI[currentLang];
   if (L) input.placeholder = L.placeholder;
-  mediaRecorder = null;
+  recognition = null;
 }
 
 // ── Text-to-Speech ────────────────────────────────────────────────────────────
