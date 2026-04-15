@@ -314,6 +314,12 @@ def ask_agent(question: str, session_id: str = "user_1", ui_lang: str = None, us
         yield {"type": "eligibility_result", "profile": profile.model_dump(), "schemes": eligible, "lang": lang}
         return
 
+    # \u2500\u2500 Sequential Step: Common analysis
+    session["awaiting_profile"] = False
+    limit = parse_limit(question_en)
+    followup = is_followup_on_previous(question_en, chat_history, session.get("last_schemes", []))
+    fresh = is_fresh_search_request(question_en)
+
     # \u2500\u2500 Special Handling: Random Gujarat Schemes (Suggestion Chip)
     if question_en.lower().strip() in ["schemes in gujarat", "scheme in gujarat"] and not followup:
         print("  Suggestion chip 'Schemes in Gujarat' detected. Fetching 5 random schemes...")
@@ -337,13 +343,6 @@ def ask_agent(question: str, session_id: str = "user_1", ui_lang: str = None, us
 
             yield {"type": "convert_to_cards", "schemes": results, "lang": lang}
             return
-
-    # \u2500\u2500 Normal scheme queries 
-    session["awaiting_profile"] = False
-    limit = parse_limit(question_en)
-
-    followup = is_followup_on_previous(question_en, chat_history, session["last_schemes"])
-    fresh = is_fresh_search_request(question_en)
 
     schemes = None
 
