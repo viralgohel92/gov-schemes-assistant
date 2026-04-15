@@ -30,7 +30,8 @@ body.dark-mode {
   --deep-saffron: #ff8800;
   --green: #2ccf1f;
   --navy: #1a1a40;
-  --accent: #66b2ff; /* New variable for dark mode visibility */
+  --accent: #66b2ff;
+  /* New variable for dark mode visibility */
   --cream: #1a1a2e;
   --card-bg: #161625;
   --chat-bg: #050510;
@@ -210,7 +211,7 @@ body.dark-mode .sidebar {
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 6px;
   min-width: 120px;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
   z-index: 2000;
   display: none;
   flex-direction: column;
@@ -1000,7 +1001,8 @@ body.dark-mode .link-value:hover {
   color: #b0a090;
 }
 
-.send-btn, .mic-btn {
+.send-btn,
+.mic-btn {
   background: var(--navy);
   color: white;
   border: none;
@@ -1016,7 +1018,8 @@ body.dark-mode .link-value:hover {
   font-size: 18px;
 }
 
-.send-btn:hover, .mic-btn:hover {
+.send-btn:hover,
+.mic-btn:hover {
   background: var(--deep-saffron);
   transform: scale(1.05);
 }
@@ -1035,15 +1038,37 @@ body.dark-mode .mic-btn.listening {
 }
 
 @keyframes pulse-red {
-  0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(255, 75, 43, 0.7); }
-  70% { transform: scale(1); box-shadow: 0 0 0 10px rgba(255, 75, 43, 0); }
-  100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(255, 75, 43, 0); }
+  0% {
+    transform: scale(0.95);
+    box-shadow: 0 0 0 0 rgba(255, 75, 43, 0.7);
+  }
+
+  70% {
+    transform: scale(1);
+    box-shadow: 0 0 0 10px rgba(255, 75, 43, 0);
+  }
+
+  100% {
+    transform: scale(0.95);
+    box-shadow: 0 0 0 0 rgba(255, 75, 43, 0);
+  }
 }
 
 @keyframes pulse-red-dark {
-  0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(255, 59, 48, 0.5); }
-  70% { transform: scale(1.02); box-shadow: 0 0 15px 12px rgba(255, 59, 48, 0); }
-  100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(255, 59, 48, 0); }
+  0% {
+    transform: scale(0.95);
+    box-shadow: 0 0 0 0 rgba(255, 59, 48, 0.5);
+  }
+
+  70% {
+    transform: scale(1.02);
+    box-shadow: 0 0 15px 12px rgba(255, 59, 48, 0);
+  }
+
+  100% {
+    transform: scale(0.95);
+    box-shadow: 0 0 0 0 rgba(255, 59, 48, 0);
+  }
 }
 
 .send-btn:disabled {
@@ -1259,9 +1284,20 @@ body.dark-mode .speak-btn:hover {
 }
 
 @keyframes pulse-glow {
-  0% { box-shadow: 0 0 15px rgba(255, 153, 51, 0.2); border-color: rgba(255, 153, 51, 0.3); }
-  50% { box-shadow: 0 0 30px rgba(255, 153, 51, 0.5); border-color: rgba(255, 153, 51, 0.8); }
-  100% { box-shadow: 0 0 15px rgba(255, 153, 51, 0.2); border-color: rgba(255, 153, 51, 0.3); }
+  0% {
+    box-shadow: 0 0 15px rgba(255, 153, 51, 0.2);
+    border-color: rgba(255, 153, 51, 0.3);
+  }
+
+  50% {
+    box-shadow: 0 0 30px rgba(255, 153, 51, 0.5);
+    border-color: rgba(255, 153, 51, 0.8);
+  }
+
+  100% {
+    box-shadow: 0 0 15px rgba(255, 153, 51, 0.2);
+    border-color: rgba(255, 153, 51, 0.3);
+  }
 }
 
 .tts-word.active {
@@ -1359,9 +1395,20 @@ body.dark-mode .tts-word.active {
 }
 
 @keyframes pulse {
-  0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(255, 51, 0, 0.7); }
-  70% { transform: scale(1); box-shadow: 0 0 0 6px rgba(255, 51, 0, 0); }
-  100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(255, 51, 0, 0); }
+  0% {
+    transform: scale(0.95);
+    box-shadow: 0 0 0 0 rgba(255, 51, 0, 0.7);
+  }
+
+  70% {
+    transform: scale(1);
+    box-shadow: 0 0 0 6px rgba(255, 51, 0, 0);
+  }
+
+  100% {
+    transform: scale(0.95);
+    box-shadow: 0 0 0 0 rgba(255, 51, 0, 0);
+  }
 }
 
 .notif-dropdown {
@@ -1384,8 +1431,15 @@ body.dark-mode .tts-word.active {
 }
 
 @keyframes slideDown {
-  from { opacity: 0; transform: translateY(-10px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .notif-dropdown.active {
@@ -1489,7 +1543,6 @@ body.dark-mode .notif-item:hover {
   background: rgba(19, 136, 8, 0.12);
   letter-spacing: 1px;
 }
-}
 
 /* ══════════════════════════════════════════════════════════════════
    ── PROFILE DROPDOWN ──
@@ -1503,7 +1556,7 @@ body.dark-mode .notif-item:hover {
   backdrop-filter: blur(10px);
   border: 1px solid var(--border);
   border-radius: 12px;
-  box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
   display: none;
   flex-direction: column;
   overflow: hidden;
@@ -1530,7 +1583,7 @@ body.dark-mode .notif-item:hover {
 }
 
 .dropdown-item span {
-    font-size: 16px;
+  font-size: 16px;
 }
 
 .dropdown-item:hover {
@@ -2050,6 +2103,7 @@ body.dark-mode .notif-item:hover {
    ── TOUCH DEVICE OPTIMIZATIONS ──
    ══════════════════════════════════════════════════════════════════ */
 @media (hover: none) and (pointer: coarse) {
+
   /* Touch devices: always show history menu buttons */
   .history-menu-btn {
     display: flex;
