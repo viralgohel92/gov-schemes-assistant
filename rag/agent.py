@@ -326,22 +326,21 @@ def ask_agent(question: str, session_id: str = "user_1", ui_lang: str = None, us
         schemes = fetch_random_schemes(k=5)
         if schemes:
             session["last_schemes"] = schemes
-            save_to_history(session_id, question, f"Showed 5 random schemes for Gujarat: {', '.join(s.scheme_name for s in schemes)}")
             
-            # Use the same card-rendering logic as 'full_detail'
-            dicts = [s.model_dump() for s in schemes]
+            # Format as a list of names (similar to names_only)
+            names_text = "\n".join(f"{i+1}. {s.scheme_name}" for i, s in enumerate(schemes))
+            names_text += "\n\n  Ask me for full details of any scheme above."
+            reply = reply_in_lang(names_text)
             
-            def _process_and_translate_scheme(d: dict) -> dict:
-                d = apply_visit_site_fallback(d)
-                if lang != "en":
-                    d = translate_scheme_dict(d, lang)
-                return d
-
-            results = []
-            with ThreadPoolExecutor(max_workers=5) as ex:
-                results = list(ex.map(_process_and_translate_scheme, dicts))
-
-            yield {"type": "convert_to_cards", "schemes": results, "lang": lang}
+            save_to_history(session_id, question, reply)
+            
+            yield {"type": "conversational_start", "lang": lang}
+            words = reply.split(" ")
+            for i, word in enumerate(words):
+                chunk = word if i == 0 else " " + word
+                yield {"type": "chunk", "text": chunk}
+                time.sleep(0.02)
+            yield {"type": "conversational_end"}
             return
 
     schemes = None
