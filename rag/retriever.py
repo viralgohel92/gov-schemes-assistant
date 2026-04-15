@@ -282,3 +282,40 @@ def fetch_schemes(question: str, chat_history: list, k: int = 5, last_schemes: l
         return [best]
 
     return result.schemes
+
+
+def fetch_random_schemes(k: int = 5) -> List[SchemeOutput]:
+    """
+    Fetches k random schemes from the database where state is Gujarat.
+    Used for the 'Schemes in Gujarat' suggestion chip.
+    """
+    from database.db import SessionLocal
+    from database.models import Scheme
+    from sqlalchemy.sql import func
+    
+    session = SessionLocal()
+    try:
+        # Fetch random schemes specifically for Gujarat
+        schemes = session.query(Scheme).filter(
+            Scheme.state.ilike("%gujarat%")
+        ).order_by(func.random()).limit(k).all()
+        
+        results = []
+        for s in schemes:
+            results.append(SchemeOutput(
+                scheme_name=s.scheme_name,
+                description=s.description or 'Not available',
+                category=s.category or 'General',
+                benefits=s.benefits or 'Not available',
+                eligibility=s.eligibility or 'Not available',
+                documents_required=s.documents_required or 'Not available',
+                application_process=s.application_process or 'Not available',
+                state=s.state or 'Gujarat',
+                official_link=s.application_link or ''
+            ))
+        return results
+    except Exception as e:
+        print(f"[fetch_random_schemes] Error: {e}")
+        return []
+    finally:
+        session.close()

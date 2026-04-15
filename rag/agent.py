@@ -16,7 +16,7 @@ from rag.utils import parse_limit
 from rag.translation import detect_language, translate_to_english, translate_response, get_string, translate_scheme_dict
 from rag.memory import get_session, save_to_history
 from rag.intent import detect_intent, detect_field, is_fresh_search_request, extract_gender_from_question, merge_gender_into_profile, is_followup_on_previous, resolve_scheme_reference
-from rag.retriever import fetch_schemes
+from rag.retriever import fetch_schemes, fetch_random_schemes
 from rag.eligibility import extract_user_profile, check_eligibility_for_schemes, fetch_eligible_schemes
 from rag.web_enrichment import apply_visit_site_fallback
 
@@ -313,6 +313,30 @@ def ask_agent(question: str, session_id: str = "user_1", ui_lang: str = None, us
         session["last_schemes"] = eligible
         yield {"type": "eligibility_result", "profile": profile.model_dump(), "schemes": eligible, "lang": lang}
         return
+
+    # \u2500\u2500 Special Handling: Random Gujarat Schemes (Suggestion Chip)
+    if question_en.lower().strip() in ["schemes in gujarat", "scheme in gujarat"] and not followup:
+        print("  Suggestion chip 'Schemes in Gujarat' detected. Fetching 5 random schemes...")
+        schemes = fetch_random_schemes(k=5)
+        if schemes:
+            session["last_schemes"] = schemes
+            save_to_history(session_id, question, f"Showed 5 random schemes for Gujarat: {', '.join(s.scheme_name for s in schemes)}")
+            
+            # Use the same card-rendering logic as 'full_detail'
+            dicts = [s.model_dump() for s in schemes]
+            
+            def _process_and_translate_scheme(d: dict) -> dict:
+                d = apply_visit_site_fallback(d)
+                if lang != "en":
+                    d = translate_scheme_dict(d, lang)
+                return d
+
+            results = []
+            with ThreadPoolExecutor(max_workers=5) as ex:
+                results = list(ex.map(_process_and_translate_scheme, dicts))
+
+            yield {"type": "convert_to_cards", "schemes": results, "lang": lang}
+            return
 
     # \u2500\u2500 Normal scheme queries 
     session["awaiting_profile"] = False
