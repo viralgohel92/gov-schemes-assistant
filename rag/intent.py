@@ -5,22 +5,31 @@ from rag.llm import get_llm, UserProfile
 def is_direct_scheme_name_query(question: str) -> bool:
     q = question.strip()
     words = q.split()
-    if len(words) < 5:
+    # Support shorter scheme names like "Vahali Dikri Yojana" (3 words)
+    if len(words) < 3:
         return False
+        
     conversational_starters = ["give me", "show me", "tell me", "find me", "what is", "which", "how", "can i", "do i", "am i", "is there", "are there"]
     q_lower = q.lower()
     if any(q_lower.startswith(s) for s in conversational_starters):
         return False
+        
     profile_keywords = ["age","income","salary","lakh","occupation","caste","obc","sc/st","ews"]
     if any(kw in q_lower for kw in profile_keywords):
         return False
-    capitalized_words = sum(1 for w in words if w[0].isupper())
+        
+    # If most words are capitalized, it's likely a scheme name
+    capitalized_words = sum(1 for w in words if w and w[0].isupper())
     if capitalized_words >= len(words) * 0.5:
         return True
+        
     question_words = ["eligible","eligib","qualify","apply","benefit","what","which","how","who","where","when","why","can","could","should","would","please","list","find","search"]
-    if not any(qw in q_lower for qw in question_words) and len(words) >= 6:
+    # If no question words and it mentions scheme/yojana, it's a name query
+    if not any(qw in q_lower for qw in question_words) and any(w in q_lower for w in ["scheme", "yojana", "yojna", "scholarship"]):
         return True
+        
     return False
+
 
 def detect_intent(question: str, chat_history: list, awaiting_profile: bool) -> str:
     q = question.lower().strip()

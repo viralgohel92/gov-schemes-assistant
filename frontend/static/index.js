@@ -14,6 +14,11 @@ const VOICE_HINT = {
   gu: { idle: 'Enter દબાવો મોકલવા માટે · Shift+Enter નવી લીટી માટે', listening: '🔴 સાંભળી રહ્યો છું… રોકવા માટે ફરીથી ક્લિક કરો' },
 };
 
+let allSuggestions = [];
+let activeSuggestionIndex = -1;
+let filteredSuggestions = [];
+
+
 function toggleVoice() {
   if (isListening) {
     if (recognition) recognition.stop();
@@ -448,6 +453,7 @@ window.onload = async () => {
   initTheme();
   setLang('en');
   updateUserUI();
+  fetchSuggestions(); // Load autocomplete data
   const res = await fetch('/me');
   const data = await res.json();
   if (data.user) {
@@ -456,6 +462,7 @@ window.onload = async () => {
     loadHistory();
   }
 };
+
 
 async function loadHistory() {
   if (!currentUser) return;
@@ -588,16 +595,181 @@ async function saveChat(userMsg, aiResult) {
 function autoResize(el) {
   el.style.height = 'auto';
   el.style.height = Math.min(el.scrollHeight, 120) + 'px';
+  if (typeof handleAutocomplete === 'function') handleAutocomplete();
 }
+
 
 function handleKey(e) {
-  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+  const box = document.getElementById('autocomplete-box');
+  if (!box.classList.contains('hidden')) {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      activeSuggestionIndex = Math.min(activeSuggestionIndex + 1, filteredSuggestions.length - 1);
+      renderAutocomplete(filteredSuggestions);
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      activeSuggestionIndex = Math.max(activeSuggestionIndex - 1, 0);
+      renderAutocomplete(filteredSuggestions);
+    } else if (e.key === 'Enter') {
+      if (activeSuggestionIndex >= 0) {
+        e.preventDefault();
+        selectSuggestion(filteredSuggestions[activeSuggestionIndex].name);
+        return;
+      }
+    } else if (e.key === 'Escape') {
+      box.classList.add('hidden');
+      input.classList.remove('has-autocomplete');
+      return;
+    }
+  }
+
+  if (e.key === 'Enter' && !e.shiftKey) { 
+    e.preventDefault(); 
+    document.getElementById('autocomplete-box').classList.add('hidden');
+    input.classList.remove('has-autocomplete');
+    sendMessage(); 
+  }
 }
 
-function sendChip(el) {
-  input.value = el.textContent.trim();
-  sendMessage();
+
+async function fetchSuggestions(lang = 'en') {
+  try {
+    const res = await fetch(`/get_suggestions?lang=${lang}`);
+    const data = await res.json();
+    allSuggestions = data.suggestions || [];
+  } catch (err) {
+    console.error("Failed to fetch suggestions:", err);
+  }
 }
+
+function renderAutocomplete(filtered, isCategories = false) {
+  const box = document.getElementById('autocomplete-box');
+  if (filtered.length === 0) {
+    box.classList.add('hidden');
+    input.classList.remove('has-autocomplete');
+    return;
+  }
+
+  // Calculate position and width to match textbox
+  const inputRect = input.getBoundingClientRect();
+  const areaRect = document.querySelector('.input-area').getBoundingClientRect();
+  
+  // Align box exactly with the textbox
+  box.style.width = inputRect.width + 'px';
+  box.style.left = (inputRect.left - areaRect.left) + 'px';
+  
+  // Position it right above the input (flush)
+  const bottomOffset = areaRect.bottom - inputRect.top;
+  box.style.bottom = (bottomOffset - 1) + 'px'; // -1 to overlap the border slightly
+
+
+  const headerText = isCategories ? {
+    en: 'Quick Search',
+    hi: 'त्वरित खोज',
+    gu: 'ઝડપી શોધ'
+  } : {
+    en: 'Suggested Schemes',
+    hi: 'सुझाई गई योजनाएं',
+    gu: 'સૂચવેલ યોજનાઓ'
+  };
+
+  let html = `<div class="autocomplete-header">${headerText[currentLang] || headerText.en}</div>`;
+  
+  filtered.forEach((item, index) => {
+    if (isCategories) {
+      // Category item (string)
+      html += `
+        <div class="autocomplete-item category ${index === activeSuggestionIndex ? 'active' : ''}" onclick="selectSuggestion('${item.replace(/'/g, "\\'")}', true)">
+          <div class="category-row">
+            <span class="category-icon">🔍</span>
+            <span class="scheme-name">${escapeHtml(item)}</span>
+          </div>
+        </div>
+      `;
+    } else {
+      // Scheme item (object)
+      html += `
+        <div class="autocomplete-item ${index === activeSuggestionIndex ? 'active' : ''}" onclick="selectSuggestion('${item.name.replace(/'/g, "\\'")}')">
+          <span class="scheme-name">${escapeHtml(item.name)}</span>
+          ${item.category ? `<span class="scheme-category">${escapeHtml(item.category)}</span>` : ''}
+        </div>
+      `;
+    }
+  });
+
+  box.innerHTML = html;
+  box.classList.remove('hidden');
+  input.classList.add('has-autocomplete');
+  
+  // Match border color on focus
+  if (document.activeElement === input) {
+    box.classList.add('active-border');
+  } else {
+    box.classList.remove('active-border');
+  }
+}
+
+
+function selectSuggestion(name, isCategory = false) {
+  input.value = name;
+  document.getElementById('autocomplete-box').classList.add('hidden');
+  input.classList.remove('has-autocomplete');
+  input.focus();
+  autoResize(input);
+  if (isCategory) {
+    handleAutocomplete(); // Trigger new autocomplete for the category
+  }
+}
+
+
+function handleAutocomplete() {
+  const query = input.value.trim().toLowerCase();
+  
+  if (!query) {
+    // Show category suggestions when focused and empty
+    if (document.activeElement === input) {
+      const L = LANG_UI[currentLang] || LANG_UI.en;
+      filteredSuggestions = L.chips || [];
+      activeSuggestionIndex = -1;
+      renderAutocomplete(filteredSuggestions, true);
+    } else {
+      document.getElementById('autocomplete-box').classList.add('hidden');
+      input.classList.remove('has-autocomplete');
+    }
+    return;
+  }
+
+  filteredSuggestions = allSuggestions.filter(s => 
+    s.name.toLowerCase().includes(query) || 
+    (s.en_name && s.en_name.toLowerCase().includes(query)) ||
+    (s.category && s.category.toLowerCase().includes(query))
+  ).slice(0, 8);
+
+  activeSuggestionIndex = -1;
+  renderAutocomplete(filteredSuggestions, false);
+}
+
+
+// Add event listeners for autocomplete
+input.addEventListener('input', handleAutocomplete);
+input.addEventListener('focus', handleAutocomplete);
+input.addEventListener('blur', () => {
+  // Delay hidden so clicks can register
+  setTimeout(() => {
+    document.getElementById('autocomplete-box').classList.add('hidden');
+    input.classList.remove('has-autocomplete');
+  }, 200);
+});
+// Hide when clicking outside
+document.addEventListener('click', (e) => {
+  const box = document.getElementById('autocomplete-box');
+  if (!box.contains(e.target) && e.target !== input) {
+    box.classList.add('hidden');
+    input.classList.remove('has-autocomplete');
+  }
+});
+
+
 
 function scrollBottom() {
   setTimeout(() => chat.scrollTop = chat.scrollHeight, 50);
@@ -1116,6 +1288,8 @@ const LANG_UI = {
 let currentLang = 'en';  // tracks which language button is active
 
 function setLang(lang) {
+  // Fetch suggestions for the new language
+  fetchSuggestions(lang);
   currentLang = lang;
   if (isListening && recognition) recognition.stop();
   // Update active button
@@ -1127,12 +1301,8 @@ function setLang(lang) {
   document.getElementById('question-input').placeholder = L.placeholder;
   // Update hint text
   document.getElementById('input-hint').textContent = L.hint;
-  // Update suggestion chips
-  const bar = document.getElementById('suggestions');
-  bar.innerHTML = L.chips
-    .map(c => `<div class="chip" onclick="sendChip(this)">${c}</div>`)
-    .join('');
 }
+
 
 // ── Web Notifications ────────────────────────────────────────────────────────
 function toggleNotifDropdown() {

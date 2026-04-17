@@ -47,9 +47,15 @@ def extract_specific_scheme_name(question: str, last_schemes: list) -> str | Non
                 return candidate
 
     if is_direct_scheme_name_query(question):
-        return question.strip()
+        candidate = question.strip(" .?")
+        if len(candidate) > 8:
+            # Clean common fillers from beginning/end
+            candidate = re.sub(r'^(the|a|an|show|detail|details|info of)\s+', '', candidate, flags=re.IGNORECASE)
+            candidate = re.sub(r'\s+(scheme|yojana|yojna)$', '', candidate, flags=re.IGNORECASE)
+            return candidate.strip()
 
     return None
+
 
 # Common search terms mapping for synonyms
 SYNONYMS = {
@@ -202,6 +208,59 @@ def _sql_fallback_search(query: str, k: int = 5):
         print(f"  SQL fallback error: {e}")
         return []
 
+def _sql_exact_name_match(scheme_name: str) -> List[Document]:
+    """
+    Tries to find an EXACT or very close match in the SQL database.
+    This bypasses vector search noise for known names.
+    """
+    from langchain_core.documents import Document
+    try:
+        from database.db import SessionLocal
+        from database.models import Scheme
+        
+        # Clean the input name for SQL searching
+        clean_name = scheme_name.strip().lower()
+        # Remove common suffixes/prefixes that might not be in DB name
+        clean_name = re.sub(r'^(the|any|all)\s+', '', clean_name)
+        clean_name = re.sub(r'\s+(scheme|yojana|yojna)$', '', clean_name)
+        
+        session = SessionLocal()
+        # Try finding exact match (case insensitive)
+        s = session.query(Scheme).filter(Scheme.scheme_name.ilike(clean_name)).first()
+        
+        # If no exact match, try if the name is an exact substring of a scheme name
+        if not s:
+            s = session.query(Scheme).filter(Scheme.scheme_name.ilike(f"%{clean_name}%")).first()
+            
+        if s:
+            # Check if it's a good match (to avoid matching "Matru" to "Matrushakti" if that's too broad)
+            from rag.utils import scheme_name_similarity
+            if scheme_name_similarity(clean_name, s.scheme_name) < 0.4:
+                session.close()
+                return []
+                
+            text = (
+
+                f"Scheme name: {s.scheme_name}\n"
+                f"Description: {s.description or 'Not found'}\n"
+                f"Category: {s.category or ''}\n"
+                f"Benefits: {s.benefits or 'Not found'}\n"
+                f"Eligibility: {s.eligibility or 'Not found'}\n"
+                f"Application Process: {s.application_process or 'Not found'}\n"
+                f"Documents Required: {s.documents_required or 'Not found'}\n"
+                f"State: {s.state or 'Gujarat'}\n"
+                f"Official Link: {s.application_link or ''}\n"
+            )
+            print(f"  [ACCURACY] Exact SQL match found for: {scheme_name}")
+            return [Document(page_content=text, metadata={})]
+        
+        session.close()
+        return []
+    except Exception as e:
+        print(f"  SQL exact match error: {e}")
+        return []
+
+
 
 
 def fetch_schemes(question: str, chat_history: list, k: int = 5, last_schemes: list = None, minimal_extraction: bool = False) -> List[SchemeOutput]:
@@ -228,17 +287,36 @@ def fetch_schemes(question: str, chat_history: list, k: int = 5, last_schemes: l
             return res
         return get_vector_db().as_retriever(search_kwargs={"k": limit}).invoke(q)
 
-    docs = _do_search(search_query, 5 if specific_name else k)
+    docs = []
+    
+    # ACCURACY TIER 1: If user provided a specific name, check SQL first!
+    if specific_name:
+        docs = _sql_exact_name_match(specific_name)
+        
+    # ACCURACY TIER 2: Vector Search
+    if not docs:
+        docs = _do_search(search_query, 5 if specific_name else k)
 
     # If rewrite actually changed the query, re-run DB search with the better query
-    if not specific_name and standalone.lower().strip() != question.lower().strip():
+    if not docs and not specific_name and standalone.lower().strip() != question.lower().strip():
         docs = _do_search(standalone, k)
 
-    #    SQL FALLBACK: If vector search returns nothing, use relational DB   
+    # ACCURACY TIER 3: SQL FALLBACK (Keyword search)
+    # Trigger if vector search returned nothing OR if the results feel irrelevant
+    context = format_docs(docs)
+    if specific_name and docs:
+        # Check if the context actually contains the requested scheme
+        # We use a simple but effective check here
+        similarity = max([scheme_name_similarity(specific_name, d.page_content.split('\n')[0].replace("Scheme name:", "").strip()) for d in docs])
+        if similarity < 0.4:
+            print(f"  [ACCURACY] Vector matches too weak (sim={similarity:.2f}). Triggering SQL fallback...")
+            docs = []
+
     if not docs:
-        print("   Vector search returned 0 docs   falling back to SQL keyword search...")
+        print("   Vector search returned 0 docs or irrelevant docs. falling back to SQL keyword search...")
         fallback_query = specific_name or search_query or question
         docs = _sql_fallback_search(fallback_query, k)
+
 
     context = format_docs(docs)
 
@@ -269,17 +347,29 @@ def fetch_schemes(question: str, chat_history: list, k: int = 5, last_schemes: l
         })
 
     if specific_name:
-        if not result.schemes:
+        if not result or not hasattr(result, 'schemes') or not result.schemes:
             return []
+
+        
+        # ACCURACY TIER 4: Final verification of similarity
         scored = sorted(
             result.schemes,
             key=lambda s: scheme_name_similarity(specific_name, s.scheme_name),
             reverse=True
         )
         best = scored[0]
-        if scheme_name_similarity(specific_name, best.scheme_name) >= 0.3:
+        similarity = scheme_name_similarity(specific_name, best.scheme_name)
+        print(f"  [ACCURACY] Final Similarity Score: {similarity:.2f} for '{best.scheme_name}'")
+        
+        # Relaxed threshold slightly to handle minor typos or translation variations
+        if similarity >= 0.45:
             return [best]
-        return [best]
+            
+        # If similarity is still too low, we return empty so the agent can apologize
+        print(f"  [ACCURACY] Discarding result '{best.scheme_name}' due to low similarity threshold.")
+        return []
+
+
 
     return result.schemes
 
