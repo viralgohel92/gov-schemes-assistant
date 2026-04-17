@@ -89,7 +89,7 @@ body {
   transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), background 0.3s;
   z-index: 100;
   flex-shrink: 0;
-  border-right: 1px solid rgba(255, 255, 255, 0.1);
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
   position: fixed;
   top: 0;
   left: 0;
@@ -109,6 +109,7 @@ body.dark-mode .sidebar {
   background: #00004d;
   border-right: 1px solid rgba(255, 255, 255, 0.1);
 }
+
 
 .sidebar.hidden {
   transform: translateX(calc(-1 * var(--sidebar-width)));
@@ -644,6 +645,110 @@ header::after {
   color: white;
   border-color: var(--navy);
 }
+
+/* ══════════════════════════════════════════════════════════════════
+   ── AUTOCOMPLETE BOX ──
+   ══════════════════════════════════════════════════════════════════ */
+.autocomplete-box {
+  position: absolute;
+  background: var(--card-bg);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1.5px solid var(--border);
+  border-bottom: none; /* Merge with input border */
+  border-radius: 12px 12px 0 0; /* Only top corners rounded */
+  box-shadow: 0 -8px 20px rgba(0, 0, 0, 0.08); /* Shadow going upwards */
+  z-index: 1000;
+  max-height: 250px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  padding: 8px;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+  pointer-events: auto;
+}
+
+/* Match the input focus color when box is active */
+.autocomplete-box.active-border {
+  border-color: var(--saffron);
+}
+
+.autocomplete-box.hidden {
+  display: none;
+  opacity: 0;
+  transform: translateY(5px);
+}
+
+#question-input.has-autocomplete {
+  border-top-left-radius: 0 !important;
+  border-top-right-radius: 0 !important;
+}
+
+.autocomplete-item {
+  padding: 10px 14px;
+  border-radius: 8px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  transition: background 0.2s;
+}
+
+.autocomplete-item:hover, .autocomplete-item.active {
+  background: rgba(0, 0, 128, 0.05);
+}
+
+body.dark-mode .autocomplete-item:hover, 
+body.dark-mode .autocomplete-item.active {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.autocomplete-item .scheme-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.autocomplete-item .scheme-category {
+  font-size: 11px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.autocomplete-item.category .category-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.autocomplete-item.category .category-icon {
+  font-size: 14px;
+  opacity: 0.6;
+}
+
+.autocomplete-header {
+  padding: 8px 14px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--saffron);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 4px;
+}
+
+/* Scrollbar for autocomplete */
+.autocomplete-box::-webkit-scrollbar {
+  width: 4px;
+}
+
+.autocomplete-box::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 2px;
+}
+
+
 
 /* ══════════════════════════════════════════════════════════════════
    ── CHAT AREA ──
