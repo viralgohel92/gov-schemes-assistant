@@ -140,6 +140,38 @@ def app_interface():
     if "session_id" not in session:
         session["session_id"] = str(uuid.uuid4())
     return render_template("index.html")
+    
+@app.route("/suggest")
+def suggest():
+    q = request.args.get("q", "").strip()
+    if not q:
+        return jsonify([])
+    
+    db = SessionLocal()
+    try:
+        from database.models import Scheme
+        # Search for scheme names matching the query (English only as requested)
+        # We search both for starting with q and containing q
+        # ILIKE is used for case-insensitive search
+        schemes = db.query(Scheme.scheme_name).filter(
+            Scheme.scheme_name.ilike(f"%{q}%")
+        ).distinct().limit(10).all()
+        
+        # Flatten the result list
+        results = [s[0] for s in schemes]
+        
+        # Sort by those starting with the query first for better UX
+        starts_with = [s for s in results if s.lower().startswith(q.lower())]
+        contains = [s for s in results if not s.lower().startswith(q.lower())]
+        
+        sorted_results = starts_with + contains
+        
+        return jsonify(sorted_results[:7])
+    except Exception as e:
+        print(f"Suggestion Error: {e}")
+        return jsonify([])
+    finally:
+        db.close()
 
 
 @app.route("/ask", methods=["POST"])

@@ -1066,7 +1066,6 @@ async function sendMessage() {
     renderResult({ error: 'Network error. Please try again.' });
   } finally {
     sendBtn.disabled = false;
-    input.focus();
   }
 }
 
@@ -1128,10 +1127,10 @@ function setLang(lang) {
   // Update hint text
   document.getElementById('input-hint').textContent = L.hint;
   // Update suggestion chips
-  const bar = document.getElementById('suggestions');
-  bar.innerHTML = L.chips
-    .map(c => `<div class="chip" onclick="sendChip(this)">${c}</div>`)
-    .join('');
+  // Suggestions are now handled by the new suggestion-box
+  if (input === document.activeElement) {
+    showSuggestions();
+  }
 }
 
 // ── Web Notifications ────────────────────────────────────────────────────────
@@ -1199,7 +1198,6 @@ window.addEventListener('click', (e) => {
 });
 
 // Update window.onload to also fetch notifications
-const originalOnload = window.onload;
 window.onload = async () => {
     if (originalOnload) await originalOnload();
     if (currentUser) {
@@ -1207,4 +1205,149 @@ window.onload = async () => {
         // Check for new notifications every 5 minutes
         setInterval(loadNotifications, 5 * 60 * 1000);
     }
+};
+
+// ── Suggestion Box Logic ───────────────────────────────────────────────────
+const suggestionBox = document.getElementById('suggestion-box');
+let selectedSuggestionIndex = -1;
+
+const QUICK_START = {
+  en: [
+    { text: "Schemes for farmers 🌾", icon: "🌾", category: "Quick Start" },
+    { text: "Women welfare schemes", icon: "👩‍👧", category: "Quick Start" },
+    { text: "Education scholarships", icon: "🎓", category: "Quick Start" },
+    { text: "Healthcare schemes", icon: "🏥", category: "Quick Start" },
+    { text: "housing scheme", icon: "🏠", category: "Quick Start" },
+    { text: "Startup schemes for youth", icon: "💼", category: "Quick Start" }
+  ],
+  hi: [
+    { text: "किसानों के लिए योजनाएं 🌾", icon: "🌾", category: "त्वरित शुरुआत" },
+    { text: "महिला कल्याण योजनाएं", icon: "👩‍👧", category: "त्वरित शुरुआत" },
+    { text: "शिक्षा छात्रवृत्ति", icon: "🎓", category: "त्वरित शुरुआत" },
+    { text: "स्वास्थ्य योजनाएं", icon: "🏥", category: "त्वरित शुरुआत" },
+    { text: "आवास योजना", icon: "🏠", category: "त्वरित शुरुआत" },
+    { text: "युवाओं के लिए स्टार्टअप योजनाएं", icon: "💼", category: "त्वरित शुरुआत" }
+  ],
+  gu: [
+    { text: "ખેડૂતો માટે યોજનાઓ 🌾", icon: "🌾", category: "ઝડપી શરૂઆત" },
+    { text: "મહિલા કલ્યાણ યોજનાઓ", icon: "👩‍👧", category: "ઝડપી શરૂઆત" },
+    { text: "શિક્ષણ શિષ્યવૃત્તિ", icon: "🎓", category: "ઝડપી શરૂઆત" },
+    { text: "આરોગ્ય સેવા યોજનાઓ", icon: "🏥", category: "ઝડપી શરૂઆત" },
+    { text: "આવાસ યોજના", icon: "🏠", category: "ઝડપી શરૂઆત" },
+    { text: "યુવાનો માટે સ્ટાર્ટઅપ યોજનાઓ", icon: "💼", category: "ઝડપી શરૂઆત" }
+  ]
+};
+
+function showSuggestions() {
+  const q = input.value.trim();
+  if (!q) {
+    renderSuggestions(QUICK_START[currentLang]);
+  } else {
+    debouncedFetchSuggestions(q);
+  }
+}
+
+function hideSuggestions() {
+  setTimeout(() => {
+    suggestionBox.classList.add('hidden');
+    selectedSuggestionIndex = -1;
+  }, 200);
+}
+
+let debounceTimer;
+function debouncedFetchSuggestions(q) {
+  clearTimeout(debounceTimer);
+  debounceTimer = setTimeout(() => fetchSuggestions(q), 300);
+}
+
+async function fetchSuggestions(q) {
+  // Autocomplete ONLY works for English as requested
+  if (currentLang !== 'en') {
+      // If not English, still show Quick Start or clear? 
+      // Requirement says "this only work for english" for scheme names.
+      // So we don't fetch from backend if not 'en'.
+      return;
+  }
+  
+  try {
+    const res = await fetch(`/suggest?q=${encodeURIComponent(q)}`);
+    const data = await res.json();
+    if (data.length > 0) {
+      renderSuggestions(data.map(name => ({ text: name, icon: "🔍", category: "Scheme" })));
+    } else {
+      hideSuggestions();
+    }
+  } catch (err) {
+    console.error("Fetch Suggestions Error:", err);
+  }
+}
+
+function renderSuggestions(list) {
+  if (!list || list.length === 0) {
+    suggestionBox.classList.add('hidden');
+    return;
+  }
+  
+  suggestionBox.innerHTML = list.map((item, idx) => `
+    <div class="suggestion-item" onclick="selectSuggestion('${item.text.replace(/'/g, "\\'")}')" data-index="${idx}">
+      <span class="icon">${item.icon || '📌'}</span>
+      <span class="text">${item.text}</span>
+    </div>
+  `).join('');
+  
+  suggestionBox.classList.remove('hidden');
+  selectedSuggestionIndex = -1;
+}
+
+function selectSuggestion(text) {
+  input.value = text;
+  suggestionBox.classList.add('hidden');
+  autoResize(input);
+  input.focus();
+}
+
+function moveSelection(direction) {
+  const items = suggestionBox.querySelectorAll('.suggestion-item');
+  if (items.length === 0) return;
+  
+  items.forEach(i => i.classList.remove('selected'));
+  
+  if (direction === 'down') {
+    selectedSuggestionIndex = (selectedSuggestionIndex + 1) % items.length;
+  } else {
+    selectedSuggestionIndex = (selectedSuggestionIndex - 1 + items.length) % items.length;
+  }
+  
+  const selected = items[selectedSuggestionIndex];
+  selected.classList.add('selected');
+  selected.scrollIntoView({ block: 'nearest' });
+}
+
+// Event Listeners
+input.addEventListener('focus', showSuggestions);
+input.addEventListener('input', showSuggestions);
+input.addEventListener('blur', hideSuggestions);
+
+// Update handleKey to support Arrow navigation
+const originalHandleKey = handleKey;
+window.handleKey = function(e) {
+  if (suggestionBox && !suggestionBox.classList.contains('hidden')) {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      moveSelection('down');
+      return;
+    }
+    if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      moveSelection('up');
+      return;
+    }
+    if (e.key === 'Enter' && selectedSuggestionIndex > -1) {
+      e.preventDefault();
+      const items = suggestionBox.querySelectorAll('.suggestion-item');
+      items[selectedSuggestionIndex].click();
+      return;
+    }
+  }
+  originalHandleKey(e);
 };

@@ -90,16 +90,6 @@
     </div>
   </header>
 
-  <div class="suggestions-bar" id="suggestions">
-    <div class="chip" onclick="sendChip(this)">Schemes for farmers 🌾</div>
-    <div class="chip" onclick="sendChip(this)">Women welfare schemes</div>
-    <div class="chip" onclick="sendChip(this)">Education scholarships</div>
-    <div class="chip" onclick="sendChip(this)">Healthcare schemes</div>
-    <div class="chip" onclick="sendChip(this)">housing scheme</div>
-    <div class="chip" onclick="sendChip(this)">Startup schemes for youth</div>
-    <div class="chip" onclick="sendChip(this)">Schemes in Gujarat</div>
-    <div class="chip" onclick="sendChip(this)">Skill development programs</div>
-  </div>
 
   <div class="chat-container" id="chat">
     <div class="welcome-card">
@@ -111,7 +101,10 @@
 
   <div class="input-area">
     <div class="input-row">
-      <textarea id="question-input" rows="1" placeholder="Ask about any government scheme…" onkeydown="handleKey(event)" oninput="autoResize(this)"></textarea>
+      <div class="input-wrapper">
+        <div id="suggestion-box" class="suggestion-box hidden"></div>
+        <textarea id="question-input" rows="1" placeholder="Ask about any government scheme…" onkeydown="handleKey(event)" oninput="autoResize(this)"></textarea>
+      </div>
       <button class="mic-btn" id="mic-btn" onclick="toggleVoice()" title="Voice input (click to speak)">🎙️</button>
       <button class="send-btn" id="send-btn" onclick="sendMessage()">➤</button>
     </div>
