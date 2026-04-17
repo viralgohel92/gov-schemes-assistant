@@ -35,6 +35,9 @@ warnings.filterwarnings("ignore")
 app = Flask(__name__)
 app.secret_key = "your-secret-key-change-this"  # Change this in production
 
+# Global cache for localized autocomplete suggestions
+SUGGESTION_CACHE = {}
+
 #    Serverless Database Management                                          
 @app.teardown_appcontext
 def shutdown_session(exception=None):
@@ -54,10 +57,21 @@ def _warmup():
     except Exception as e:
         print(f"    Warmup failed (non-fatal): {e}")
 
-#    Background Threading                                                    
-# NOTE: Background threads are disabled for Vercel/Serverless deployment.
-# We use Webhooks for Telegram instead of polling.
-# threading.Thread(target=_warmup, daemon=True).start()
+# Pre-warm the suggestion cache for Hindi and Gujarati in the background
+def prewarm_suggestions():
+    # Wait a few seconds for the DB to be ready/app to start
+    import time
+    time.sleep(5)
+    print("  [PRE-WARM] Starting background translation for suggestions...")
+    with app.app_context():
+        # Force a call to get_suggestions for hi and gu
+        with app.test_client() as client:
+            client.get('/get_suggestions?lang=hi')
+            client.get('/get_suggestions?lang=gu')
+    print("  [PRE-WARM] Background translation complete.")
+
+threading.Thread(target=prewarm_suggestions, daemon=True).start()
+threading.Thread(target=_warmup, daemon=True).start()
 
 
 @app.route("/me")
@@ -180,6 +194,53 @@ def ask():
             yield f"data: {json.dumps({'error': str(e)})}\n\n"
     
     return Response(stream_with_context(generate()), mimetype='text/event-stream')
+    
+@app.route("/get_suggestions", methods=["GET"])
+def get_suggestions():
+    lang = request.args.get('lang', 'en')
+    
+    if lang in SUGGESTION_CACHE:
+        return jsonify({"suggestions": SUGGESTION_CACHE[lang]})
+
+    db = SessionLocal()
+    try:
+        from database.models import Scheme
+        from rag.translation import translate_suggestions_batch
+        
+        # Fetch unique scheme names only
+        schemes = db.query(Scheme.scheme_name, Scheme.category).all()
+        result = []
+        seen_names = set()
+        for s in schemes:
+            if s.scheme_name and s.scheme_name not in seen_names:
+                result.append({"name": s.scheme_name, "category": s.category})
+                seen_names.add(s.scheme_name)
+        
+        if lang != 'en':
+            import sys
+            sys.stderr.write(f"  [CACHE MISS] Translating {len(result)} suggestions to {lang}...\n")
+            # Translate in batches of 50 to avoid LLM limits
+            translated_all = []
+            for i in range(0, len(result), 50):
+                batch = result[i:i+50]
+                sys.stderr.write(f"    Processing batch {i//50 + 1}/{(len(result)-1)//50 + 1} for {lang}...\n")
+                translated_batch = translate_suggestions_batch(batch, lang)
+                translated_all.extend(translated_batch)
+            result = translated_all
+            SUGGESTION_CACHE[lang] = result
+            sys.stderr.write(f"    Finished translating suggestions for {lang}.\n")
+        else:
+            # English doesn't need translation but needs en_name for consistency
+            result = [{"name": s["name"], "category": s["category"], "en_name": s["name"]} for s in result]
+            SUGGESTION_CACHE['en'] = result
+
+        return jsonify({"suggestions": result})
+    except Exception as e:
+        print(f"Error fetching suggestions: {e}")
+        return jsonify({"suggestions": []})
+    finally:
+        db.close()
+
 
 
 @app.route("/stt", methods=["POST"])

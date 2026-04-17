@@ -1,74 +1,106 @@
-# 🏗️ Yojana AI: Technical Workflow
+# 🏗️ Yojana AI: Technical Architecture & Workflow
 
-This document explains the technical architecture, data flow, and RAG (Retrieval-Augmented Generation) pipeline of the Yojana AI project.
+This document provides a deep dive into the technical architecture, data processing pipelines, and the RAG (Retrieval-Augmented Generation) flow of the **Yojana AI** project.
+
+---
 
 ## 📐 System Architecture
 
-The following diagram illustrates how the different components of Yojana AI interact with each other:
+The following diagram illustrates the high-level interaction between global components:
 
 ```mermaid
 graph TD
     User([User])
-    Web[Web UI / Telegram / WhatsApp]
+    Web[Web UI / Tailwind]
+    Bot[Telegram / WhatsApp Bot]
     API[Flask / Vercel API]
     RAG[RAG Orchestrator]
     LLM[Mistral AI / LLM]
+    TTS[Edge-TTS]
     VDB[Supabase Vector Store]
     SDB[Supabase SQL DB]
     Scraper[GitHub Actions Scraper]
 
     User <--> Web
+    User <--> Bot
     Web <--> API
+    Bot <--> API
     API <--> RAG
+    API <--> TTS
     RAG <--> LLM
     RAG <--> VDB
     RAG <--> SDB
     Scraper --> SDB
-    SDB -.->|Embeddings| VDB
+    SDB -.->|Post-processing| VDB
 ```
 
 ---
 
-## 🔄 1. Data Ingestion & Synchronization
-Yojana AI relies on fresh government data. This process is automated via GitHub Actions.
+## 🔄 1. Data Ingestion Pipeline (The Scraper)
 
-1.  **Scraping**: A daily workflow runs a Playwright-based scraper (`scraper/myscheme_scraper.py`) that visits `myscheme.gov.in`.
-2.  **Relational Sync**: Scraped schemes are parsed and updated in the `schemes` table in Supabase.
-3.  **Vectorization**: Any new or updated schemes are passed to the Mistral AI embedding model.
-4.  **Vector Storage**: The resulting 1024-dimension embeddings are stored in the `documents` table using the `pgvector` extension.
+Ensuring data freshness is critical. Yojana AI employs an automated synchronization pipeline:
 
----
-
-## 🧠 2. The RAG Pipeline
-When a user asks a question, the `ask_agent` workflow in `rag/agent.py` is triggered:
-
-### Phase A: Intent & Topic Detection
-- **Translation**: If the query is in Gujarati or Hindi, it is translated to English for internal processing.
-- **Intent**: The LLM classifies the user's intent (e.g., `names_only` for a list, `full_detail` for a specific scheme).
-- **Topic Extraction**: Filler words are stripped (e.g., "show me farmer schemes" -> "farmer").
-
-### Phase B: Dual-Path Retrieval
-- **Primary (Vector)**: A semantic search is performed against the Supabase `match_documents` RPC function.
-- **Fallback (SQL)**: If vector search returns 0 results (e.g., "education"), a relational search using `ILIKE` keywords is performed on the `schemes` table.
-
-### Phase C: Structured Extraction
-- The retrieved context and the user's question are sent to a **Structured LLM**.
-- The LLM extracts specific fields: `scheme_name`, `benefits`, `eligibility`, `application_process`, etc.
-- **Hallucination Guard**: Placeholder labels or irrelevant schemes are filtered out before being sent to the UI.
+1.  **Orchestration**: A GitHub Action (`.github/workflows/sync_data.yml`) triggers every 24 hours.
+2.  **Scraping**: A Playwright-based script (`scraper/myscheme_scraper.py`) visits the official `myscheme.gov.in` portal.
+3.  **Deduplication**: Data is compared against existing entries in the Supabase `schemes` table using a unique hash of the scheme content.
+4.  **Vectorization**: New or modified schemes are passed through the `mistral-embed` model.
+5.  **Persistence**:
+    -   **Metadata**: Stored in a standard PostgreSQL table.
+    -   **Embeddings**: Stored in a `documents` table using the `pgvector` extension (1024-D vectors).
 
 ---
 
-## 🌍 3. Omnichannel Delivery
-Yojana AI is accessible across multiple platforms:
+## 🧠 2. The RAG Pipeline (The "Ask Assistant" Flow)
 
--   **Web UI**: A glassmorphic dashboard built with Flask and Tailwind CSS, featuring real-time cards and streaming chat.
--   **Telegram**: Handled via `python-telegram-bot` (`bot/telegram_handler.py`).
--   **WhatsApp**: Integrated via Twilio's WhatsApp API.
--   **Voice**: Supports voice queries and replies using **Edge-TTS** for Hindi, Gujarati, and English.
+When a user submits a query via Web, Telegram, or WhatsApp, the `ask_agent` workflow in `rag/agent.py` executes the following phases:
+
+### Phase A: Language & Intent Analysis
+-   **Language Detection**: Detects if the query is in English, Hindi, or Gujarati.
+-   **Internal Translation**: If non-English, the query is translated into English for optimized embedding matching.
+-   **Intent Classification**: The LLM classifies the intent:
+    -   `names_only`: User wants a list of schemes.
+    -   `full_detail`: User wants deep details of a specific scheme.
+    -   `eligibility_check`: User is providing profile details to find matches.
+    -   `conversational`: General greeting or Q&A.
+
+### Phase B: Hybrid Retrieval
+-   **Vector Search**: A semantic similarity search is performed via a Supabase RPC (`match_documents`) against the `pgvector` store.
+-   **SQL Keyword Fallback**: If semantic search yields low-confidence scores, an `ILIKE` relational search is performed on category and name tags.
+
+### Phase C: Eligibility Reasoning
+-   If profile data is provided, the system compares the user's data (age, income, category) against the `eligibility` text field of the retrieved schemes using an LLM-based reasoning step.
+
+### Phase D: Response Generation & Streaming
+-   The LLM synthesizes the final answer using the retrieved context.
+-   **Streaming**: Responses are streamed to the Web UI via Server-Sent Events (SSE) for a responsive "typing" effect.
+-   **Translation**: The final English response is translated back into the user's detected/selected language (Hindi/Gujarati).
 
 ---
 
-## 🛡️ 4. Error Handling & Redundancy
-- **API Guard**: Prevents Mistral 400 errors by ensuring no empty messages are saved to history.
-- **Visit Site Fallback**: If a direct official link is missing, the system suggests visiting the main government portal.
-- **Rate Limiting**: Automated backoff logic in the scraper handles Mistral AI rate limits.
+## 🌍 3. Omnichannel Delivery Mechanisms
+
+-   **Web UI**: Built with Flask and Tailwind CSS. Uses Glassmorphism for a premium feel. Supports real-time "cards" for scheme display.
+-   **Telegram**: Implemented as a webhook-based bot using `python-telegram-bot`.
+-   **WhatsApp**: Integrated via Twilio's API.
+-   **Voice Layer**: 
+    -   **Input**: Browser-native Web Speech API (Edge Native STT) provides fast, low-latency transcription for the web experience.
+    -   **Output**: Microsoft `Edge-TTS` generates high-quality natural voice in English, Hindi, and Gujarati.
+
+---
+
+## 🛠️ 4. Local Development & Testing
+
+### Testing the RAG Logic
+You can test the RAG engine without the Web UI by running experimental scripts in `scripts/` or calling `rag/agent.py` directly (if modularized for CLI).
+
+### Environment Guardrails
+-   **Vercel Serverless**: Background threads are disabled; logic must be execution-time efficient (< 60s).
+-   **Supabase Secrets**: Local development requires a valid `DATABASE_URL` with SSL enabled.
+
+---
+
+## 🛡️ 5. Reliability & Fallbacks
+
+-   **Visit Site Fallback**: If official links are outdated, the system automatically redirects users to the `myscheme.gov.in` homepage to prevent 404s.
+-   **Hallucination Guard**: The system uses a strict "System Prompt" that prevents it from answering questions unrelated to government schemes.
+-   **Rate Limiting**: Automated backoff logic handles Mistral AI and Groq API limits.

@@ -1,6 +1,6 @@
 import re
 import json
-from rag.llm import get_llm, TranslatedScheme
+from rag.llm import get_llm, TranslatedScheme, SuggestionListOutput
 
 # -------------------------------------------------
 # Language Support
@@ -169,3 +169,54 @@ Input JSON to translate:
     except Exception as e:
         print(f"[translate_scheme_dict] Translation failed: {e}")
         return d
+
+def translate_suggestions_batch(suggestions: list, target_lang: str) -> list:
+    """Translate a list of suggestion objects (name + category) in bulk."""
+    if target_lang == "en":
+        return suggestions
+    
+    if not suggestions:
+        return []
+
+    lang_name = {"hi": "Hindi", "gu": "Gujarati"}.get(target_lang, "English")
+    
+    # Format input for LLM
+    items_to_translate = []
+    for s in suggestions:
+        items_to_translate.append({"name": s["name"], "category": s.get("category", "")})
+    
+    json_in = json.dumps(items_to_translate, ensure_ascii=False)
+    
+    script_warn = {
+        "hi": "IMPORTANT: Use ONLY Hindi language with Devanagari script (\u0939\u093f\u0902\u0926\u0940). Do NOT output Gujarati.",
+        "gu": "IMPORTANT: Use ONLY Gujarati language with Gujarati script (\u0a97\u0ac1\u0a9c\u0ab0\u0abe\u0aa4\u0ac0). Do NOT output Hindi.",
+    }.get(target_lang, "")
+
+    prompt = f"""Translate these government scheme names and categories to {lang_name}.
+IMPORTANT: Use the localized script ({'Devanagari for Hindi' if target_lang == 'hi' else 'Gujarati script for Gujarati'}).
+Even if the scheme name is a proper noun, it should be TRANSLITERATED into the target script so it is readable in that language. 
+Example (Hindi): "Mukhyamantri Mahila" -> "मुख्यमंत्री महिला"
+Example (Gujarati): "Mukhyamantri Mahila" -> "મુખ્યમંત્રી મહિલા"
+
+Keep SC/ST/OBC/EWS/SEBC exactly the same.
+{script_warn}
+Return ONLY a JSON object with a "suggestions" key containing the list of translated objects.
+
+Input JSON:
+{json_in}
+"""
+    try:
+        translated_list = get_llm().with_structured_output(SuggestionListOutput).invoke(prompt)
+        results = []
+        for i, item in enumerate(translated_list.suggestions):
+            # Include en_name for bilingual filtering
+            results.append({
+                "name": item.name,
+                "category": item.category,
+                "en_name": suggestions[i]["name"]
+            })
+        return results
+    except Exception as e:
+        print(f"[translate_suggestions_batch] Batch translation failed: {e}")
+        # Fallback to original with en_name
+        return [{"name": s["name"], "category": s.get("category"), "en_name": s["name"]} for s in suggestions]

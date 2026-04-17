@@ -37,6 +37,13 @@ class TranslatedScheme(BaseModel):
     application_process: Optional[str] = Field(None)
     category: Optional[str] = Field(None)
 
+class SuggestionOutput(BaseModel):
+    name: str = Field(description="Localized scheme name")
+    category: Optional[str] = Field(None, description="Localized category")
+
+class SuggestionListOutput(BaseModel):
+    suggestions: List[SuggestionOutput] = Field(description="List of localized suggestions")
+
 class UserProfile(BaseModel):
     age: Optional[int] = Field(None)
     income: Optional[str] = Field(None)

@@ -45,8 +45,32 @@ def profile_to_text(profile: UserProfile) -> str:
     return "\n".join(l for l in lines if l)
 
 def scheme_name_similarity(name_a: str, name_b: str) -> float:
-    a_words = [w.lower() for w in name_a.split() if len(w) > 3]
-    if not a_words:
+    """
+    Calculates similarity between two scheme names.
+    Gives higher weight to unique identifying words and less to common ones like 'yojana'.
+    """
+    if not name_a or not name_b:
         return 0.0
-    b_lower = name_b.lower()
-    return sum(1 for w in a_words if w in b_lower) / len(a_words)
+        
+    COMMON_WORDS = {"yojana", "yojna", "scheme", "schemes", "gujarat", "sahay", "mukhyamantri", "pradhan", "mantri", "bharat", "level"}
+    
+    def get_meaningful_words(name):
+        return [w.lower() for w in re.findall(r'\b\w+\b', name) if len(w) > 2]
+
+    words_a = get_meaningful_words(name_a)
+    words_b = get_meaningful_words(name_b)
+    
+    if not words_a:
+        return 0.0
+        
+    matches = 0
+    total_weight = 0
+    
+    for word in words_a:
+        weight = 0.5 if word in COMMON_WORDS else 1.0
+        total_weight += weight
+        if word in words_b:
+            matches += weight
+            
+    return matches / total_weight if total_weight > 0 else 0.0
+
