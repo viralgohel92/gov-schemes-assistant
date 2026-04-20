@@ -155,6 +155,8 @@ def shutdown_session(exception=None):
 
 def _warmup():
     try:
+        from database.db import init_db
+        init_db() # Ensure tables exist (SessionState, etc)
         from rag.agent import warmup
         warmup()
     except Exception as e:
@@ -1001,6 +1003,8 @@ def status():
 @app.route("/set_telegram_webhook", methods=["GET"])
 def set_telegram_webhook():
     """Utility route to set the Telegram webhook URL."""
+    from database.db import init_db
+    init_db() # Create missing tables before setting webhook
     token = os.getenv("TELEGRAM_BOT_TOKEN")
     if not token:
         return jsonify({"error": "TELEGRAM_BOT_TOKEN not set in environment"}), 400
