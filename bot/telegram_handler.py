@@ -185,13 +185,18 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await process_text_and_reply(update, text, chat_id, context)
 
 async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    import tempfile
     chat_id = str(update.effective_chat.id)
     voice_file = await update.message.voice.get_file()
-    temp_ogg = f"tg_voice_{uuid.uuid4()}.ogg"
+    
+    # Use system temp directory for production compatibility
+    temp_dir = tempfile.gettempdir()
+    temp_ogg = os.path.join(temp_dir, f"tg_voice_{uuid.uuid4()}.ogg")
+    
     await voice_file.download_to_drive(temp_ogg)
     
     ui_lang = context.user_data.get('lang', 'en') if context else 'en'
-    print(f"DEBUG: Processing Telegram voice message in {ui_lang}...")
+    print(f"DEBUG: Processing Telegram voice message in {ui_lang}... Output: {temp_ogg}")
 
     try:
         if not GROQ_API_KEY:
@@ -223,7 +228,11 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
         print(f"DEBUG: Transcription successful: {transcription.text}")
         await process_text_and_reply(update, transcription.text, chat_id, context, is_voice=True)
     finally:
-        if os.path.exists(temp_ogg): os.remove(temp_ogg)
+        if os.path.exists(temp_ogg):
+            try:
+                os.remove(temp_ogg)
+            except Exception as e:
+                print(f"Cleanup Error (Voice): {e}")
 
 def create_telegram_app():
     """Initializes and returns the Telegram Application instance."""

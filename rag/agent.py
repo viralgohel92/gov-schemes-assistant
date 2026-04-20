@@ -14,7 +14,7 @@ from langchain_core.messages import HumanMessage, AIMessage
 from rag.llm import SchemeOutput, MinimalSchemeOutput, UserProfile, warmup, get_vector_db, get_llm
 from rag.utils import parse_limit
 from rag.translation import detect_language, translate_to_english, translate_response, get_string, translate_scheme_dict
-from rag.memory import get_session, save_to_history
+from rag.memory import get_session, save_to_history, save_session
 from rag.intent import detect_intent, detect_field, is_fresh_search_request, extract_gender_from_question, merge_gender_into_profile, is_followup_on_previous, resolve_scheme_reference
 from rag.retriever import fetch_schemes, fetch_random_schemes
 from rag.eligibility import extract_user_profile, check_eligibility_for_schemes, fetch_eligible_schemes
@@ -125,6 +125,7 @@ def ask_agent(question: str, session_id: str = "user_1", ui_lang: str = None, us
         session["user_profile"] = UserProfile(**updated_data)
         if not getattr(session["user_profile"], 'state', None):
             session["user_profile"].state = "Gujarat"
+        save_session(session_id, session)
 
     #    Language detection   
     detected = detect_language(question)
@@ -139,6 +140,7 @@ def ask_agent(question: str, session_id: str = "user_1", ui_lang: str = None, us
         lang = session.get("lang", "en")
     
     session["lang"] = lang
+    save_session(session_id, session)
     print(f"[DEBUG] ask_agent called with question: {question[:100]}")
 
     def reply_in_lang(text: str) -> str:
@@ -177,6 +179,7 @@ def ask_agent(question: str, session_id: str = "user_1", ui_lang: str = None, us
         profile = merge_gender_into_profile(profile_update, gender_hint)
         session["user_profile"] = profile
         session["awaiting_profile"] = False
+        save_session(session_id, session)
 
         if awaiting_profile and session.get("last_schemes"):
             last = session["last_schemes"]
@@ -475,6 +478,7 @@ def ask_agent(question: str, session_id: str = "user_1", ui_lang: str = None, us
             schemes = [s for s in schemes if s.scheme_name not in prev_names]
         session["last_schemes"] = schemes
         session["last_limit"] = limit
+        save_session(session_id, session)
 
     if intent == "names_only":
         # Filter out invalid or hallucinated names (LLM sometimes matches labels instead of values)
