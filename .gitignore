@@ -58,6 +58,7 @@ vector_db/
 *.temp
 tmp/
 temp/
+scratch/
 
 # --- Playwright (scraping) ---
 playwright-report/

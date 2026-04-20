@@ -46,7 +46,7 @@ warnings.filterwarnings("ignore")
 # load_dotenv() moved to the top
 
 app = Flask(__name__)
-app.secret_key = "your-secret-key-change-this"  # Change this in production
+app.secret_key = os.getenv("FLASK_SECRET_KEY", "your-secret-key-change-this")  # Prefer env var
 
 # -------------------------------------------------
 #   Global Exception Handling & Email Alerts
@@ -146,7 +146,8 @@ def shutdown_session(exception=None):
     """Ensure database sessions are closed after every request."""
     from database.db import SessionLocal
     # This manually closes the session to prevent Supabase connection leaks
-    pass
+    # Use .remove() on scoped_session to recycle pool connections
+    SessionLocal.remove()
 
 # -------------------------------------------------
 #   Background warmup logic (Shared with CLI/Sync tools)
@@ -390,7 +391,15 @@ def text_to_speech():
         # Run the async function from sync Flask
         asyncio.run(generate_speech(text, lang, temp_path))
         
-        return send_file(temp_path, mimetype="audio/mpeg")
+        def generate_and_cleanup():
+            with open(temp_path, "rb") as f:
+                yield from f
+            try:
+                if os.path.exists(temp_path): os.remove(temp_path)
+            except Exception as e:
+                print(f"Cleanup Error: {e}")
+
+        return Response(generate_and_cleanup(), mimetype="audio/mpeg")
         
     except Exception as e:
         print(f"TTS Error: {e}")
@@ -863,18 +872,28 @@ def whatsapp_webhook():
     schemes_data = []
 
     for chunk in ask_agent(text_to_process, session_id=session_id, user_context=user_context):
-        if chunk['type'] in ['chunk', 'conversational', 'names_only', 'specific_field']:
+        ctype = chunk.get('type')
+        if ctype in ['chunk', 'conversational', 'names_only', 'names_only_start', 'specific_field']:
             incoming_chunk = chunk.get('text', '') or chunk.get('reply', '')
             if any(p in incoming_chunk for p in ["Loading cards", "Generating response", "Analyzing profile", "conversational_start", "conversational_end"]):
                 continue
             full_text += incoming_chunk
-        elif chunk['type'] in ['convert_to_cards', 'full_detail']:
+        elif ctype == 'names_only_pill':
+            s = chunk.get('scheme', {})
+            full_text += f"\n• {s.get('scheme_name')}"
+        elif ctype in ['convert_to_cards', 'full_detail', 'schemes_end']:
             schemes_data = chunk.get('schemes', [])
-        elif chunk['type'] == 'eligibility_result':
+        elif ctype == 'scheme_card':
+            # Collect individual cards for single-message block logic
+            schemes_data.append(chunk.get('scheme'))
+        elif ctype == 'eligibility_result' or ctype == 'eligibility_for_shown':
             res_schemes = chunk.get('schemes', [])
             full_text += f"\n\n  *Found {len(res_schemes)} Eligible Schemes:*\n"
             for i, s in enumerate(res_schemes):
-                full_text += f"{i+1}. *{s.scheme_name}*\n     {s.why_eligible}\n"
+                # Fix: using .get() for dict access instead of object attribute
+                name = s.get('scheme_name', 'Unknown')
+                why = s.get('why_eligible', '')
+                full_text += f"{i+1}. *{name}*\n     {why}\n"
 
     # 3. Append Full Details if they exist
     if schemes_data:
@@ -914,7 +933,15 @@ def tts_wa():
     
     temp_path = os.path.join("/tmp", f"wa_reply_{uuid.uuid4()}.mp3")
     asyncio.run(generate_speech(text, lang, temp_path))
-    return send_file(temp_path, mimetype="audio/mpeg")
+    def generate_and_cleanup():
+        with open(temp_path, "rb") as f:
+            yield from f
+        try:
+            if os.path.exists(temp_path): os.remove(temp_path)
+        except Exception as e:
+            print(f"Cleanup Error: {e}")
+
+    return Response(generate_and_cleanup(), mimetype="audio/mpeg")
 
 
 @app.route("/reset", methods=["POST"])

@@ -80,18 +80,26 @@ async def process_text_and_reply(update: Update, text: str, chat_id: str, contex
     # Collect RAG response
     ui_lang = context.user_data.get('lang', 'en') if context else 'en'
     for chunk in ask_agent(text, session_id=session_id, user_context=user_context, ui_lang=ui_lang):
+        ctype = chunk.get('type')
         # 1. Collect conversational text but SKIP UI-only placeholders
-        if chunk['type'] in ['chunk', 'conversational', 'names_only', 'specific_field']:
+        if ctype in ['chunk', 'conversational', 'names_only', 'names_only_start', 'specific_field']:
             incoming_chunk = chunk.get('text', '') or chunk.get('reply', '')
             # Filter UI placeholders
             if any(p in incoming_chunk for p in ["Loading cards", "Generating response", "Analyzing profile", "conversational_start", "conversational_end"]):
                 continue
             full_text += incoming_chunk
             
+        elif ctype == 'names_only_pill':
+            s = chunk.get('scheme', {})
+            full_text += f"\n• {s.get('scheme_name')}"
+
         # 2. Collect rich scheme data
-        elif chunk['type'] in ['convert_to_cards', 'full_detail']:
+        elif ctype in ['convert_to_cards', 'full_detail', 'schemes_end']:
             schemes_data = chunk.get('schemes', [])
-        elif chunk['type'] in ['eligibility_result', 'eligibility_for_shown']:
+        elif ctype == 'scheme_card':
+            schemes_data.append(chunk.get('scheme'))
+            
+        elif ctype in ['eligibility_result', 'eligibility_for_shown']:
             res_schemes = chunk.get('schemes', [])
             if res_schemes:
                 full_text += "\n\n  *Matching Schemes:*\n"
