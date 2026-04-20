@@ -20,6 +20,25 @@ from rag.retriever import fetch_schemes, fetch_random_schemes
 from rag.eligibility import extract_user_profile, check_eligibility_for_schemes, fetch_eligible_schemes
 from rag.web_enrichment import apply_visit_site_fallback
 
+def _translate_scheme_names(scheme_dicts, lang):
+    """Helper to translate scheme names in a list of scheme dicts (for pills/cards)."""
+    if lang == "en" or not scheme_dicts:
+        return scheme_dicts
+    try:
+        from rag.translation import translate_suggestions_batch
+        # Note: translate_suggestions_batch returns dicts with 'name', 'category', 'en_name'
+        to_translate = [{"name": s.get("scheme_name", ""), "category": s.get("category", "")} for s in scheme_dicts]
+        translated = translate_suggestions_batch(to_translate, lang)
+        for i, t in enumerate(translated):
+            # Update name and category. Keep other fields (benefits, etc.) as is.
+            scheme_dicts[i]["scheme_name"] = t["name"]
+            if t.get("category"):
+                scheme_dicts[i]["category"] = t["category"]
+    except Exception as e:
+        print(f"[_translate_scheme_names] Error: {e}")
+    return scheme_dicts
+
+
 def get_total_scheme_count() -> int:
     """Count total schemes stored in the Vector DB or Database."""
     try:
@@ -178,8 +197,9 @@ def ask_agent(question: str, session_id: str = "user_1", ui_lang: str = None, us
                 results = check_eligibility_for_schemes(profile, scheme_objects)
                 save_to_history(session_id, question, f"Checked eligibility for {len(scheme_objects)} schemes.")
                 yield {"type": "conversational_end"}
-                yield {"type": "eligibility_for_shown", "profile": profile.model_dump(), "schemes": results, "lang": lang}
+                yield {"type": "eligibility_for_shown", "profile": profile.model_dump(), "schemes": _translate_scheme_names(results, lang), "lang": lang}
                 return
+
 
         # No prior shown schemes OR scheme_objects came out empty   search full DB
         print("  No prior schemes found \u2014 searching full DB for eligibility...")
@@ -200,7 +220,8 @@ def ask_agent(question: str, session_id: str = "user_1", ui_lang: str = None, us
 
         save_to_history(session_id, question, f"Found {len(eligible)} eligible schemes.")
         session["last_schemes"] = eligible
-        yield {"type": "eligibility_result", "profile": profile.model_dump(), "schemes": eligible, "lang": lang}
+        yield {"type": "eligibility_result", "profile": profile.model_dump(), "schemes": _translate_scheme_names(eligible, lang), "lang": lang}
+
         return
 
     # \u2500\u2500 User asks eligibility for previously shown schemes 
@@ -266,8 +287,9 @@ def ask_agent(question: str, session_id: str = "user_1", ui_lang: str = None, us
             save_to_history(session_id, question, f"Found {len(eligible)} eligible schemes.")
             session["last_schemes"] = eligible
             yield {"type": "conversational_end"}
-            yield {"type": "eligibility_result", "profile": profile.model_dump(), "schemes": eligible, "lang": lang}
+            yield {"type": "eligibility_result", "profile": profile.model_dump(), "schemes": _translate_scheme_names(eligible, lang), "lang": lang}
             return
+
 
         if last_schemes:
             print(f"  Found {len(last_schemes)} schemes in history. Converting to full detail...")
@@ -300,7 +322,8 @@ def ask_agent(question: str, session_id: str = "user_1", ui_lang: str = None, us
             results = check_eligibility_for_schemes(profile, full_schemes)
             save_to_history(session_id, question, f"Checked eligibility for {len(full_schemes)} schemes.")
             yield {"type": "conversational_end"}
-            yield {"type": "eligibility_for_shown", "profile": profile.model_dump(), "schemes": results, "lang": lang}
+            yield {"type": "eligibility_for_shown", "profile": profile.model_dump(), "schemes": _translate_scheme_names(results, lang), "lang": lang}
+
             return
 
         print("  Searching all schemes for your eligibility...")
@@ -312,7 +335,8 @@ def ask_agent(question: str, session_id: str = "user_1", ui_lang: str = None, us
             return
         save_to_history(session_id, question, f"Found {len(eligible)} eligible schemes.")
         session["last_schemes"] = eligible
-        yield {"type": "eligibility_result", "profile": profile.model_dump(), "schemes": eligible, "lang": lang}
+        yield {"type": "eligibility_result", "profile": profile.model_dump(), "schemes": _translate_scheme_names(eligible, lang), "lang": lang}
+
         return
 
     # \u2500\u2500 Sequential Step: Common analysis
@@ -330,8 +354,12 @@ def ask_agent(question: str, session_id: str = "user_1", ui_lang: str = None, us
             
             # Format as a list of names (similar to names_only)
             # Send as names_only format for clickable pills
-            yield {"type": "names_only", "reply": reply, "schemes": [s.model_dump() for s in schemes], "lang": lang}
+            reply = ls("found_schemes")
+            scheme_dicts = [s.model_dump() for s in schemes]
+            yield {"type": "names_only", "reply": reply, "schemes": _translate_scheme_names(scheme_dicts, lang), "lang": lang}
             return
+
+
 
     schemes = None
     resolved = None
@@ -448,8 +476,11 @@ def ask_agent(question: str, session_id: str = "user_1", ui_lang: str = None, us
         save_to_history(session_id, question, reply)
 
         # Send full list for UI rendering (clickable chips) directly
-        yield {"type": "names_only", "reply": reply, "schemes": [s.model_dump() for s in selected], "lang": lang}
+        scheme_dicts = [s.model_dump() for s in selected]
+        yield {"type": "names_only", "reply": reply, "schemes": _translate_scheme_names(scheme_dicts, lang), "lang": lang}
         return
+
+
 
     if intent == "specific_field":
         field = detect_field(question_en)
