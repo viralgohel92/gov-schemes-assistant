@@ -253,24 +253,27 @@ async def handle_webhook_update(update_json: dict):
     """Processes a single update received via webhook."""
     global _app_initialized
     if not _telegram_app:
+        print("ERROR: Telegram App not initialized (Check TELEGRAM_BOT_TOKEN)")
         return
     
     try:
         if not _app_initialized:
+            print("DEBUG: First webhook request. Initializing and Starting Telegram App...")
             await _telegram_app.initialize()
+            await _telegram_app.start() # Critical for v20+ webhooks
             _app_initialized = True
+            print("DEBUG: Telegram App Started Successfully.")
             
-        print(f"DEBUG: Webhook Update ID: {update_json.get('update_id')}")
         update = Update.de_json(update_json, _telegram_app.bot)
         
         # Log message content for debugging
-        if update.message and update.message.text:
-            print(f"DEBUG: Message from {update.effective_chat.id}: {update.message.text}")
-        elif update.message and update.message.voice:
-            print(f"DEBUG: Voice message from {update.effective_chat.id}")
-
+        if update.message:
+            chat_id = update.effective_chat.id
+            text = update.message.text or "[Non-text message]"
+            print(f"📥 TELEGRAM RECEIVE: Chat={chat_id}, Msg='{text}'")
+        
         await _telegram_app.process_update(update)
-        print("DEBUG: Update processed successfully.")
+        print("📤 TELEGRAM PROCESSED: Update handled.")
     except Exception as e:
         print(f"Error in handle_webhook_update: {e}")
 

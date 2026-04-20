@@ -956,17 +956,18 @@ def reset():
 @app.route("/telegram", methods=["POST"])
 async def telegram_webhook():
     """Endpoint for Telegram Webhook updates."""
+    print("📢 WEBHOOK TRIGGERED: Received request from Telegram API.")
     if not handle_webhook_update:
         return jsonify({"error": "Telegram handler not found"}), 500
         
     try:
         update_json = request.get_json()
         if update_json:
-            # We use await here because handle_webhook_update is async
+            print(f"📦 WEBHOOK DATA: {str(update_json)[:200]}...")
             await handle_webhook_update(update_json)
         return "OK", 200
     except Exception as e:
-        print(f"Telegram Webhook Error: {e}")
+        print(f"❌ Telegram Webhook Error: {e}")
         return jsonify({"error": str(e)}), 500
 
 @app.route("/status")
