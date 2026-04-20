@@ -81,8 +81,9 @@ async def process_text_and_reply(update: Update, text: str, chat_id: str, contex
     ui_lang = context.user_data.get('lang', 'en') if context else 'en'
     for chunk in ask_agent(text, session_id=session_id, user_context=user_context, ui_lang=ui_lang):
         ctype = chunk.get('type')
+        
         # 1. Collect conversational text but SKIP UI-only placeholders
-        if ctype in ['chunk', 'conversational', 'names_only', 'names_only_start', 'specific_field']:
+        if ctype in ['chunk', 'conversational', 'names_only', 'names_only_start', 'names_only_end', 'specific_field']:
             incoming_chunk = chunk.get('text', '') or chunk.get('reply', '')
             # Filter UI placeholders
             if any(p in incoming_chunk for p in ["Loading cards", "Generating response", "Analyzing profile", "conversational_start", "conversational_end"]):
@@ -91,20 +92,26 @@ async def process_text_and_reply(update: Update, text: str, chat_id: str, contex
             
         elif ctype == 'names_only_pill':
             s = chunk.get('scheme', {})
-            full_text += f"\n• {s.get('scheme_name')}"
+            name = s.get('scheme_name') or s.get('name', 'Unknown')
+            full_text += f"\n• {name}"
 
         # 2. Collect rich scheme data
         elif ctype in ['convert_to_cards', 'full_detail', 'schemes_end']:
-            schemes_data = chunk.get('schemes', [])
+            # Use provided list if available, otherwise stay with aggregated schemes_data
+            if chunk.get('schemes'):
+                schemes_data = chunk.get('schemes')
+        
         elif ctype == 'scheme_card':
-            schemes_data.append(chunk.get('scheme'))
+            s = chunk.get('scheme')
+            if s and s not in schemes_data:
+                schemes_data.append(s)
             
-        elif ctype in ['eligibility_result', 'eligibility_for_shown']:
+        elif ctype in ['eligibility_result', 'eligibility_for_shown', 'eligibility_start']:
             res_schemes = chunk.get('schemes', [])
             if res_schemes:
-                full_text += "\n\n  *Matching Schemes:*\n"
+                if "\n  *Matching Schemes:*" not in full_text:
+                    full_text += "\n\n  *Matching Schemes:*\n"
                 for i, s in enumerate(res_schemes):
-                    # Robust dict access
                     name = s.get('scheme_name') or s.get('name', 'Unknown Scheme')
                     why  = s.get('why_eligible') or s.get('reason', '')
                     full_text += f"{i+1}. *{name}*\n     {why}\n"
@@ -263,7 +270,11 @@ def start_telegram_bot():
     # Create a fresh app for polling to avoid collision with global one
     app = create_telegram_app()
     if app:
-        print("Telegram Bot (with Voice) is running in Polling mode...")
+        print("\n" + "="*50)
+        print("  🚀 Yojana AI Telegram Bot is starting...")
+        print("  📡 Mode: POLLING (Local Development)")
+        print("  📜 Note: Webhooks are disabled while polling.")
+        print("="*50 + "\n")
         app.run_polling()
 
 if __name__ == '__main__':
