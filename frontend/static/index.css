@@ -490,6 +490,20 @@ header::after {
   display: flex;
 }
 
+.modal-header {
+  color: var(--navy);
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 22px;
+  margin-bottom: 20px;
+  border-bottom: 2px solid var(--saffron);
+  padding-bottom: 10px;
+}
+
+body.dark-mode .modal-header {
+  color: var(--saffron);
+  border-bottom-color: rgba(255, 153, 51, 0.3);
+}
+
 .modal-content.glass {
   background: var(--card-bg);
   backdrop-filter: blur(12px);
@@ -605,6 +619,29 @@ header::after {
   padding: 0 10px;
 }
 
+body.dark-mode .divider span {
+  color: var(--text);
+}
+
+.checkbox-group {
+    margin-top: 15px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.checkbox-label {
+    font-size: 14px;
+    color: var(--navy);
+    cursor: pointer;
+    user-select: none;
+}
+
+body.dark-mode .checkbox-label {
+    color: var(--text);
+    opacity: 0.9;
+}
+
 .btn-primary {
   width: 100%;
   background: var(--navy);
@@ -622,6 +659,15 @@ header::after {
 
 .btn-primary:hover {
   background: var(--deep-saffron);
+}
+
+body.dark-mode .btn-primary {
+  background: #2a2a72;
+}
+
+body.dark-mode .btn-primary:hover {
+  background: var(--saffron);
+  color: var(--navy);
 }
 
 /* ══════════════════════════════════════════════════════════════════
@@ -1278,6 +1324,14 @@ body.dark-mode .mic-btn.listening {
 .chat-container::-webkit-scrollbar-thumb {
   background: #d0c8b8;
   border-radius: 3px;
+}
+
+body.dark-mode .chat-container::-webkit-scrollbar-thumb {
+  background: #2a2a45;
+}
+
+body.dark-mode .chat-container::-webkit-scrollbar-thumb:hover {
+  background: #3a3a5a;
 }
 
 

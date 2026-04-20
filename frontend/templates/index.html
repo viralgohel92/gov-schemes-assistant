@@ -202,7 +202,7 @@
 
     <!-- Forgot Password Flow -->
     <div id="forgot-email-form" class="auth-form-container">
-      <h3 style="margin-bottom: 15px; color: var(--navy); font-family: 'Rajdhani'; border-bottom: 1px solid #eee; padding-bottom: 8px;">Reset Password</h3>
+      <h3 class="modal-header" style="margin-bottom: 15px; border-bottom: 1px solid #eee; padding-bottom: 8px;">Reset Password</h3>
       <div class="form-group">
         <label>Enter your registered email</label>
         <input type="email" id="forgot-email-input" placeholder="example@mail.com">
@@ -214,7 +214,7 @@
     </div>
 
     <div id="forgot-otp-form" class="auth-form-container">
-      <h3 style="margin-bottom: 15px; color: var(--navy); font-family: 'Rajdhani'; border-bottom: 1px solid #eee; padding-bottom: 8px;">Verify OTP</h3>
+      <h3 class="modal-header" style="margin-bottom: 15px; border-bottom: 1px solid #eee; padding-bottom: 8px;">Verify OTP</h3>
       <p style="font-size: 13px; color: #666; margin-bottom: 15px;">We've sent a 6-digit code to your email.</p>
       <div class="form-group">
         <label>Verification Code</label>
@@ -227,7 +227,7 @@
     </div>
 
     <div id="forgot-reset-form" class="auth-form-container">
-      <h3 style="margin-bottom: 15px; color: var(--navy); font-family: 'Rajdhani'; border-bottom: 1px solid #eee; padding-bottom: 8px;">Create New Password</h3>
+      <h3 class="modal-header" style="margin-bottom: 15px; border-bottom: 1px solid #eee; padding-bottom: 8px;">Create New Password</h3>
       <div class="form-group">
         <label>New Password</label>
         <input type="password" id="forgot-new-password" placeholder="••••••••">
@@ -244,7 +244,7 @@
 <!-- Profile / Eligibility Update Modal -->
 <div class="modal-overlay" id="profile-modal" onclick="closeProfileModal(event)">
   <div class="modal-content glass" onclick="event.stopPropagation()" style="max-width:500px;">
-    <h3 style="color:var(--navy);font-family:'Rajdhani',sans-serif;font-size:22px;margin-bottom:20px;border-bottom:2px solid var(--saffron);padding-bottom:10px;">Update Your Eligibility</h3>
+    <h3 class="modal-header">Update Your Eligibility</h3>
     
     <div class="form-row">
       <div class="form-group">
@@ -289,10 +289,9 @@
       </div>
     </div>
 
-    <!-- Email Notification Toggle -->
-    <div style="margin-top:15px; display:flex; align-items:center; gap:10px;">
+    <div class="checkbox-group">
         <input type="checkbox" id="profile-email-notif" style="width:18px; height:18px;">
-        <label for="profile-email-notif" style="font-size:14px; color:var(--navy); cursor:pointer;">Notify me about new schemes via Email</label>
+        <label for="profile-email-notif" class="checkbox-label">Notify me about new schemes via Email</label>
     </div>
 
     <div style="display:flex;gap:12px;margin-top:25px;">
