@@ -101,6 +101,50 @@ function toggleAutoRead() {
   }
 }
 
+async function speakSequence(texts, btn, lang) {
+  if (currentAudio) { currentAudio.pause(); currentAudio = null; }
+
+  // Clear other active highlights
+  document.querySelectorAll('.reading-active').forEach(b => b.classList.remove('reading-active'));
+  document.querySelectorAll('.speak-btn').forEach(s => {
+    if (s !== btn) { s.dataset.speaking = '0'; s.textContent = '🔊 Listen'; }
+  });
+
+  if (btn && btn.dataset.speaking === '1') {
+    btn.dataset.speaking = '0';
+    btn.textContent = '🔊 Listen';
+    return;
+  }
+
+  const container = btn?.closest('.bubble') || btn?.closest('.scheme-card');
+  if (container) container.classList.add('reading-active');
+  if (btn) { btn.dataset.speaking = '1'; btn.textContent = '⌛...'; }
+
+  try {
+    for (let i = 0; i < texts.length; i++) {
+        if (btn && btn.dataset.speaking === '0') break; 
+        if (texts[i].trim() === "") continue;
+
+        await new Promise((resolve) => {
+            const url = `/tts?text=${encodeURIComponent(texts[i].trim())}&lang=${lang || currentLang}`;
+            const audio = new Audio(url);
+            currentAudio = audio;
+            audio.onplay = () => { if (btn) btn.textContent = '⏹ Stop'; };
+            const end = () => { currentAudio = null; resolve(); };
+            audio.onended = end;
+            audio.onerror = end;
+            audio.onpause = end;
+            audio.play().catch(end);
+        });
+
+
+    }
+  } finally {
+    if (btn) { btn.dataset.speaking = '0'; btn.textContent = '🔊 Listen'; }
+    if (container) container.classList.remove('reading-active');
+  }
+}
+
 async function speakText(text, btn, lang) {
   // 1. Stop any current audio and clear ALL active highlights
   if (currentAudio) {
@@ -668,6 +712,15 @@ function escapeHtml(s) {
   return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>');
 }
 
+function escapeXml(s) {
+  if (!s) return "";
+  return s.replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&apos;');
+}
+
 function renderResult(result) {
   const row = document.createElement('div');
   row.className = 'msg-row ai';
@@ -688,6 +741,11 @@ function renderResult(result) {
   else if (result.type === 'names_only') {
     const schemes = result.schemes || [];
     const replyText = result.reply || (currentLang === 'hi' ? 'मुझे ये योजनाएं मिलीं:' : (currentLang === 'gu' ? 'મને આ યોજનાઓ મળી:' : 'I found these schemes:'));
+    const speakId = 'speak-' + Date.now();
+    
+    const pillNames = schemes.map(s => s.scheme_name).filter(Boolean);
+    const sequenceBody = [replyText, ...pillNames];
+
     const buttons = schemes.map(s => {
       const name = s.scheme_name || '';
       return `<button class="scheme-select-btn" onclick="askQuestion('${name.replace(/'/g, "\\'")}')">${escapeHtml(name)}</button>`;
@@ -696,12 +754,18 @@ function renderResult(result) {
     content = `<div class="bubble ai" style="border: 1px solid var(--saffron); background: rgba(255,103,31,0.02); padding: 15px;">
       <div style="font-weight: 600; color: var(--saffron); margin-bottom: 8px; font-family: 'Rajdhani', sans-serif; font-size: 15px;">
         📋 ${escapeHtml(replyText)}
+        <br><button class="speak-btn" id="${speakId}" data-speaking="0" style="margin-top:5px">🔊 Listen</button>
       </div>
       <div style="display:flex;flex-wrap:wrap;gap:8px;">${buttons}</div>
       <div style="margin-top:12px; border-top:1px solid rgba(0,0,0,0.05); padding-top:6px; font-size:11px; color:var(--muted); font-style:italic">
         💡 Click on any scheme above to see full details.
       </div>
     </div>`;
+    
+    setTimeout(() => {
+        const btn = document.getElementById(speakId);
+        if (btn) btn.onclick = () => speakSequence(sequenceBody, btn, result.lang || currentLang);
+    }, 10);
   }
   else if (result.type === 'specific_field') {
     const field = (result.field || '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
@@ -821,7 +885,15 @@ function renderResult(result) {
       msgToSpeak = result.text || result.reply || '';
 
     } else if (result.type === 'names_only' && result.reply) {
-      msgToSpeak = result.reply;
+      const pillNames = (result.schemes || []).map(s => s.scheme_name).filter(Boolean);
+      const sequenceBody = [result.reply, ...pillNames];
+      
+      setTimeout(() => {
+        const btn = row.querySelector('.speak-btn');
+        if (autoReadEnabled) speakSequence(sequenceBody, btn, responseLang);
+      }, 50);
+      return; // Handled specially
+
 
     } else if (result.type === 'specific_field' && result.reply) {
       const fieldLabel = (result.field || '').replace(/_/g, ' ');

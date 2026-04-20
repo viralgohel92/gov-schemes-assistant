@@ -28,6 +28,7 @@ except Exception:
     handle_webhook_update = None
 import asyncio
 import requests
+import tempfile
 from twilio.twiml.messaging_response import MessagingResponse
 
 warnings.filterwarnings("ignore")
@@ -314,7 +315,7 @@ def speech_to_text():
     audio_file = request.files['audio']
     # Use a unique name to avoid collisions
     temp_filename = f"stt_{uuid.uuid4()}.webm"
-    temp_path = os.path.join("/tmp", temp_filename)
+    temp_path = os.path.join(tempfile.gettempdir(), temp_filename)
     audio_file.save(temp_path)
     
     lang = request.args.get("lang", "en")
@@ -365,13 +366,15 @@ def text_to_speech():
     text = request.args.get("text", "")
     lang = request.args.get("lang", "en")
     
+    print(f"TTS REQUEST: lang={lang}, text_len={len(text)}, text_start={text[:50]!r}")
+    
     if not text:
         return jsonify({"error": "No text provided"}), 400
     
     try:
         # Create a temporary file name for TTS
         temp_filename = f"tts_{uuid.uuid4()}.mp3"
-        temp_path = os.path.join("/tmp", temp_filename)
+        temp_path = os.path.join(tempfile.gettempdir(), temp_filename)
         
         # Run the async function from sync Flask
         asyncio.run(generate_speech(text, lang, temp_path))
