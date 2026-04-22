@@ -288,6 +288,7 @@ def ask():
     data = request.get_json()
     q = data.get("question", "").strip()
     ui_lang = data.get("lang")
+    is_pill = data.get("is_pill", False)
     session_id = session.get("session_id", "user_1")
     
     if not q:
@@ -311,7 +312,7 @@ def ask():
 
     def generate():
         try:
-            for chunk in ask_agent(q, session_id=session_id, ui_lang=ui_lang, user_context=user_context):
+            for chunk in ask_agent(q, session_id=session_id, ui_lang=ui_lang, user_context=user_context, is_pill=is_pill):
                 yield f"data: {json.dumps(chunk)}\n\n"
         except Exception as e:
             yield f"data: {json.dumps({'error': str(e)})}\n\n"

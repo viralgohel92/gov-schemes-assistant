@@ -42,15 +42,21 @@ except Exception as e:
 def init_db():
     """Creates tables if they don't exist. Safe to run multiple times."""
     from database.models import Base
+    
+    # 1. Try to enable pgvector (optional)
     try:
         with engine.connect() as conn:
-            # Enable pgvector for AI search (no-op if already enabled)
             conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector;"))
             conn.commit()
-        # Create all ORM-defined tables (schemes, users, etc.)
+    except Exception as e:
+        print(f"Extension init warning (ignored): {e}")
+
+    # 2. Create ORM-defined tables (Required)
+    try:
         Base.metadata.create_all(bind=engine)
         print("Database schema initialized (tables ready).")
     except Exception as e:
-        print(f"Schema init warning: {e}")
+        print(f"Database table creation failed: {e}")
+        raise e
 
 SessionLocal = scoped_session(sessionmaker(autocommit=False, autoflush=False, bind=engine))

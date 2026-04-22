@@ -137,6 +137,11 @@ def get_string(key: str, lang: str) -> str:
     """Get a static UI string in the given language."""
     return LANG_STRINGS.get(lang, LANG_STRINGS["en"]).get(key, LANG_STRINGS["en"].get(key, ""))
 
+# -------------------------------------------------
+# Cache Initialization
+# -------------------------------------------------
+_FIELD_CACHE = {} # (text, target_lang) -> translated_text
+
 def translate_scheme_dict(d: dict, target_lang: str) -> dict:
     if target_lang == "en":
         return d
@@ -149,7 +154,21 @@ def translate_scheme_dict(d: dict, target_lang: str) -> dict:
         return d
 
     to_translate = {k: d[k] for k in keys_to_translate}
-    json_in = json.dumps(to_translate, ensure_ascii=False)
+    
+    # Try individual field caching first for maximum efficiency
+    res = d.copy()
+    still_need = {}
+    for k, text in to_translate.items():
+        cache_key = (text, target_lang)
+        if cache_key in _FIELD_CACHE:
+            res[k] = _FIELD_CACHE[cache_key]
+        else:
+            still_need[k] = text
+            
+    if not still_need:
+        return res
+
+    json_in = json.dumps(still_need, ensure_ascii=False)
     
     script_warn = {
         "hi": "IMPORTANT: Use ONLY Hindi language with Devanagari script (\u0939\u093f\u0902\u0926\u0940). Do NOT output Gujarati.",
@@ -166,8 +185,12 @@ Input JSON to translate:
 """
     try:
         translated = get_llm().with_structured_output(TranslatedScheme).invoke(prompt)
-        res = d.copy()
-        res.update({k: v for k, v in translated.model_dump().items() if v})
+        trans_dict = translated.model_dump()
+        for k, v in trans_dict.items():
+            if v and k in still_need:
+                # Save to cache
+                _FIELD_CACHE[(still_need[k], target_lang)] = v
+                res[k] = v
         return res
     except Exception as e:
         print(f"[translate_scheme_dict] Translation failed: {e}")

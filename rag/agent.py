@@ -110,7 +110,10 @@ AI:"""
 # Main ask function
 # -------------------------------------------------
 
-def ask_agent(question: str, session_id: str = "user_1", ui_lang: str = None, user_context: dict = None):
+def ask_agent(question: str, session_id: str = "user_1", ui_lang: str = None, user_context: dict = None, is_pill: bool = False):
+    # \u2500\u2500 SSE Optimization: Yield START IMMEDIATELY \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+    yield {"type": "search_start"}
+    
     session = get_session(session_id)
     chat_history = session["history"]
     awaiting_profile = session.get("awaiting_profile", False)
@@ -158,21 +161,28 @@ def ask_agent(question: str, session_id: str = "user_1", ui_lang: str = None, us
     PROFILE_REQUEST = ls("profile_request")
     awaiting_profile = session.get("awaiting_profile", False)
 
-    # \u2500\u2500 Sequential Step 1: Translation (MUST happen first)
-    question_en = translate_to_english(question, detected)
-    
-    # \u2500\u2500 Step 3: Parallelized Tasks (Intent, Profile, Field, Gender)
-    # Once we have question_en, we can run all other analysis in parallel to save ~4-6 seconds.
-    # Parallelize: detect_intent, extract_user_profile, detect_field, extract_gender_from_question
-    with ThreadPoolExecutor(max_workers=4) as ex:
-        f_intent = ex.submit(detect_intent, question_en, chat_history, awaiting_profile)
-        f_profile = ex.submit(extract_user_profile, question_en)
-        f_gender = ex.submit(extract_gender_from_question, question_en)
+    # \u2500\u2500 Sequential Step 1: Translation/Intent (FAST PATH for pills)
+    if is_pill:
+        print(f"  [FAST PATH] Pill click detected for: {question}")
+        intent = "full_detail"
+        # For pill clicks, we bypass expensive language detection/translation of the question
+        # since it's already an exact system-provided name.
+        question_en = question 
+        profile_update = None
+        gender_hint = None
+    else:
+        # Standard Path: Translation followed by Parallel Analysis
+        yield {"type": "status", "text": "Analyzing your request..."}
+        question_en = translate_to_english(question, detected)
         
-        # Wait for those that are needed immediately
-        intent = f_intent.result()
-        profile_update = f_profile.result()
-        gender_hint = f_gender.result()
+        with ThreadPoolExecutor(max_workers=4) as ex:
+            f_intent = ex.submit(detect_intent, question_en, chat_history, awaiting_profile)
+            f_profile = ex.submit(extract_user_profile, question_en)
+            f_gender = ex.submit(extract_gender_from_question, question_en)
+            
+            intent = f_intent.result()
+            profile_update = f_profile.result()
+            gender_hint = f_gender.result()
 
     # \u2500\u2500 User provided their profile 
     if intent == "eligibility_check":
@@ -211,6 +221,7 @@ def ask_agent(question: str, session_id: str = "user_1", ui_lang: str = None, us
 
 
         # No prior shown schemes OR scheme_objects came out empty   search full DB
+        yield {"type": "status", "text": "Searching all schemes for you..."}
         print("  No prior schemes found \u2014 searching full DB for eligibility...")
         try:
             eligible = fetch_eligible_schemes(profile, k=4)
@@ -442,7 +453,7 @@ def ask_agent(question: str, session_id: str = "user_1", ui_lang: str = None, us
             schemes = converted
 
     # Force "Names First" policy ONLY for new, non-specific searches
-    if resolved is None and intent in ("full_detail", "specific_field") and not followup:
+    if not is_pill and resolved is None and intent in ("full_detail", "specific_field") and not followup:
         # Check if it's a very specific long name query (from is_direct_scheme_name_query)
         # using a simple length check or keyword check
         from rag.intent import is_direct_scheme_name_query
@@ -460,6 +471,7 @@ def ask_agent(question: str, session_id: str = "user_1", ui_lang: str = None, us
                     prev_names.append(name)
         base_k = 5
         fetch_k = max(limit or base_k, base_k) + len(prev_names)
+        yield {"type": "status", "text": "Looking up matching schemes..."}
         schemes = fetch_schemes(question_en, chat_history, k=fetch_k, last_schemes=session["last_schemes"], minimal_extraction=(intent == "names_only"))
         
         #    Prevent Hallucinations (Filtering junk responses)   

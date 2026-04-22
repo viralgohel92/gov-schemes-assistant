@@ -37,24 +37,26 @@ GROQ_API_KEY   = os.getenv("GROQ_API_KEY", "")  # Optional   only for Telegram v
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = str(update.effective_chat.id)
     db = SessionLocal()
-    user = db.query(User).filter(User.telegram_chat_id == chat_id).first()
-    db.close()
-    
-    reply_keyboard = [
-        ["  Schemes for farmers", "    Education scholarships"],
-        ["  Healthcare schemes", "  Housing scheme"],
-        ["   EN", "   HI", "   GU"]
-    ]
-    markup = ReplyKeyboardMarkup(reply_keyboard, resize_keyboard=True, input_field_placeholder="Ask about schemes...", one_time_keyboard=False)
+    try:
+        user = db.query(User).filter(User.telegram_chat_id == chat_id).first()
+        
+        reply_keyboard = [
+            ["  Schemes for farmers", "    Education scholarships"],
+            ["  Healthcare schemes", "  Housing scheme"],
+            ["   EN", "   HI", "   GU"]
+        ]
+        markup = ReplyKeyboardMarkup(reply_keyboard, resize_keyboard=True, input_field_placeholder="Ask about schemes...", one_time_keyboard=False)
 
-    if user:
-        await update.message.reply_text(f"Namaste {user.full_name}!  \nWelcome back to Yojana AI. How can I help you today?", reply_markup=markup)
-    else:
-        await update.message.reply_text(
-            "Namaste!  Welcome to *Yojana AI*.\n just ask me a question!",
-            parse_mode='Markdown',
-            reply_markup=markup
-        )
+        if user:
+            await update.message.reply_text(f"Namaste {user.full_name}!  \nWelcome back to Yojana AI. How can I help you today?", reply_markup=markup)
+        else:
+            await update.message.reply_text(
+                "Namaste!  Welcome to *Yojana AI*.\n just ask me a question!",
+                parse_mode='Markdown',
+                reply_markup=markup
+            )
+    finally:
+        db.close()
 
 async def process_text_and_reply(update: Update, text: str, chat_id: str, context: ContextTypes.DEFAULT_TYPE = None, is_voice=False):
     # Show typing status
@@ -158,14 +160,16 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if text.lower().startswith("link "):
         email = text.split(" ", 1)[1].strip()
         db = SessionLocal()
-        user = db.query(User).filter(User.email == email).first()
-        if user:
-            user.telegram_chat_id = chat_id
-            db.commit()
-            await update.message.reply_text(f"  Success! Linked to *{user.full_name}*.", parse_mode='Markdown')
-        else:
-            await update.message.reply_text("  Account not found.")
-        db.close()
+        try:
+            user = db.query(User).filter(User.email == email).first()
+            if user:
+                user.telegram_chat_id = chat_id
+                db.commit()
+                await update.message.reply_text(f"  Success! Linked to *{user.full_name}*.", parse_mode='Markdown')
+            else:
+                await update.message.reply_text("  Account not found.")
+        finally:
+            db.close()
         return
 
     # 2. Handle Language Selection Chips

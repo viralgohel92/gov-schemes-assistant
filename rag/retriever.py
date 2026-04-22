@@ -53,17 +53,19 @@ def extract_specific_scheme_name(question: str, last_schemes: list) -> str | Non
 
 # Common search terms mapping for synonyms
 SYNONYMS = {
-    "housing": ["awas", "house", "home", "residential", "housing", "ghar", "makan", "rehthan", "awas yojna"],
-    "farmer": ["khedut", "agriculture", "kisan", "crop", "farm", "farmers", "farming", "krushi", "khet"],
-    "student": ["vidhyarthi", "scholarship", "education", "school", "college", "students", "shikshan", "shishyavrutti"],
-    "health": ["medical", "aarogya", "hospital", "medicine", "treatment", "healthcare", "swasthya", "davakhanu"],
-    "woman": ["mahila", "lady", "female", "girl", "women", "ladies", "girls", "stree", "beheno"],
+    "housing": ["awas", "house", "home", "residential", "housing", "ghar", "makan", "rehthan", "awas yojna", "shelter"],
+    "farmer": ["khedut", "agriculture", "kisan", "crop", "farm", "farmers", "farming", "krushi", "khet", "rural"],
+    "student": ["vidhyarthi", "scholarship", "education", "school", "college", "students", "shikshan", "shishyavrutti", "learning"],
+    "health": ["medical", "aarogya", "hospital", "medicine", "treatment", "healthcare", "swasthya", "davakhanu", "wellness"],
+    "woman": ["mahila", "lady", "female", "girl", "women", "ladies", "girls", "stree", "beheno", "child", "maternity"],
     "disability": ["divyang", "handicap", "disabled", "viklang"],
-    "employment": ["job", "rozgaar", "career", "skill", "employment", "naukri", "kaushalya"],
+    "employment": ["job", "rozgaar", "career", "skill", "employment", "naukri", "kaushalya", "youth", "young"],
     "poultry": ["chicken", "bird", "egg", "murgapalan", "hen", "chick", "hatchery", "paxipalan"],
     "animal": ["pashupalan", "cattle", "cow", "buffalo", "veterinary", "livestock", "milk", "dairy", "maldhari"],
-    "loan": ["credit", "subsidy", "financial assistance", "sahay", "loan", "rin", "loan sahay"],
+    "loan": ["credit", "subsidy", "financial assistance", "sahay", "loan", "rin", "loan sahay", "banking", "finance"],
     "marriage": ["vivah", "lagana", "shadi", "kanyadan", "marriage"],
+    "business": ["startup", "entrepreneurship", "business", "self-employed", "venture", "industry", "msme", "shop"],
+    "welfare": ["welfare", "empowerment", "social", "support", "assistance", "sahay", "utility", "sanitation"],
 }
 
 def extract_search_topic(question: str) -> str:
@@ -159,6 +161,7 @@ def _sql_fallback_search(query: str, k: int = 5):
         order_case = case(*rank_conditions, else_=0)
         
         # Try finding AND matches first (more specific)
+        # Note: We prioritize category matches here for boarder chip queries
         schemes = session.query(Scheme).filter(and_(*filters)).order_by(desc(order_case)).limit(k).all()
         
         # TIER 2: If no "AND" matches, fall back to a weighted "OR" search
@@ -215,6 +218,10 @@ def _sql_exact_name_match(scheme_name: str) -> List[Document]:
         clean_name = scheme_name.strip().lower()
         # Remove common suffixes/prefixes that might not be in DB name
         clean_name = re.sub(r'^(the|any|all)\s+', '', clean_name)
+        # Remove parentheses and everything inside them (e.g. "(Part 1)", "(Developing Case)")
+        clean_name = re.sub(r'\(.*?\)', '', clean_name).strip()
+        # Remove trailing words that look like they might be cut off (no vowels or very short)
+        # Or common filler words
         clean_name = re.sub(r'\s+(scheme|yojana|yojna)$', '', clean_name)
         
         session = SessionLocal()

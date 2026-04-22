@@ -81,11 +81,11 @@ function stopVoiceUI() {
 
 let isAgentBusy = false;
 
-function askQuestion(text) {
+function askQuestion(text, isPill = false) {
   if (isAgentBusy || !text) return;
   input.value = text;
   autoResize(input);
-  sendMessage();
+  sendMessage(isPill);
 }
 
 // ── Text-to-Speech ────────────────────────────────────────────────────────────
@@ -748,7 +748,7 @@ function renderResult(result) {
 
     const buttons = schemes.map(s => {
       const name = s.scheme_name || '';
-      return `<button class="scheme-select-btn" onclick="askQuestion('${name.replace(/'/g, "\\'")}')">${escapeHtml(name)}</button>`;
+      return `<button class="scheme-select-btn" onclick="askQuestion('${name.replace(/'/g, "\\'")}', true)">${escapeHtml(name)}</button>`;
     }).join('');
 
     content = `<div class="bubble ai" style="border: 1px solid var(--saffron); background: rgba(255,103,31,0.02); padding: 15px;">
@@ -809,7 +809,7 @@ function renderResult(result) {
       <div style="background:var(--ai-bubble);border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-top:8px;">
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
           <span style="background:var(--green);color:white;border-radius:50%;width:22px;height:22px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0">${i + 1}</span>
-          <strong class="clickable-scheme-name" onclick="askQuestion('${(s.scheme_name || '').replace(/'/g, "\\'")}')" style="color:var(--saffron);font-size:14px;cursor:pointer;text-decoration:underline">${escapeHtml(s.scheme_name || '')}</strong>
+          <strong class="clickable-scheme-name" onclick="askQuestion('${(s.scheme_name || '').replace(/'/g, "\\'")}', true)" style="color:var(--saffron);font-size:14px;cursor:pointer;text-decoration:underline">${escapeHtml(s.scheme_name || '')}</strong>
         </div>
         ${s.why_eligible ? `<div style="color:#138808;font-size:12px;margin-top:4px">✅ ${escapeHtml(s.why_eligible)}</div>` : ''}
         ${s.category ? `<div style="color:var(--muted);font-size:12px;margin-top:3px">📂 ${escapeHtml(s.category)}</div>` : ''}
@@ -842,7 +842,7 @@ function renderResult(result) {
       return `<div style="display:flex;gap:8px;padding:8px 0;border-bottom:1px solid var(--border);">
         <span style="font-size:15px;flex-shrink:0">${icon}</span>
         <div>
-          <div class="clickable-scheme-name" onclick="askQuestion('${(s.scheme_name || '').replace(/'/g, "\\'")}')" style="font-weight:600;font-size:13px;color:var(--saffron);cursor:pointer;text-decoration:underline">${escapeHtml(s.scheme_name || '')}</div>
+          <div class="clickable-scheme-name" onclick="askQuestion('${(s.scheme_name || '').replace(/'/g, "\\'")}', true)" style="font-weight:600;font-size:13px;color:var(--saffron);cursor:pointer;text-decoration:underline">${escapeHtml(s.scheme_name || '')}</div>
           <div style="font-size:12px;color:${color};margin-top:2px">${escapeHtml(s.reason || '')}</div>
           ${s.is_eligible && s.official_link && !['not available', 'n/a', 'none', ''].includes((s.official_link || '').toLowerCase())
           ? `<a href="${escapeHtml(s.official_link)}" target="_blank" class="link-value" style="font-size:12px;margin-top:4px;display:inline-block">🔗 Apply here ↗</a>` : ''}
@@ -859,12 +859,30 @@ function renderResult(result) {
       </div>
     </div>`;
   }
+  else if (result.type === 'search_start' || result.type === 'names_only_start' || result.type === 'schemes_start' || result.type === 'eligibility_start' || result.type === 'conversational_start') {
+    // These are status start events. We update the typing indicator if it exists,
+    // otherwise we silently ignore them to prevent the "unexpected response" error.
+    const typingDots = document.querySelector('.typing-row .typing-dots');
+    if (typingDots) {
+      if (result.type === 'search_start') typingDots.dataset.status = 'Searching for schemes...';
+      else if (result.type === 'names_only_start') typingDots.dataset.status = 'Found some matches...';
+      else if (result.type === 'schemes_start') typingDots.dataset.status = 'Fetching full details...';
+      else if (result.type === 'eligibility_start') typingDots.dataset.status = 'Checking eligibility...';
+    }
+    return; // Don't render a bubble for these
+  }
+  else if (result.type === 'status') {
+    const typingDots = document.querySelector('.typing-row .typing-dots');
+    if (typingDots && result.text) typingDots.dataset.status = result.text;
+    return;
+  }
   else if (result.error) {
     content = `<div class="bubble ai" style="color:#c00;">⚠️ Error: ${escapeHtml(result.error)}</div>`;
   }
   else {
     // Fallback — should never happen but prevents blank messages
-    content = `<div class="bubble ai" style="color:var(--muted);">Received an unexpected response. Please try again.</div>`;
+    console.warn("Unexpected result type:", result.type, result);
+    return; 
   }
 
   row.innerHTML = avatar + content;
@@ -1070,7 +1088,7 @@ function buildSchemeCard(s, i) {
   </div>`;
 }
 
-async function sendMessage() {
+async function sendMessage(isPill = false) {
   if (isAgentBusy) return;
   const q = input.value.trim();
   if (!q) return;
@@ -1087,7 +1105,7 @@ async function sendMessage() {
     const res = await fetch('/ask', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ question: q, lang: currentLang })
+      body: JSON.stringify({ question: q, lang: currentLang, is_pill: isPill })
     });
 
     if (!res.ok) {
@@ -1118,7 +1136,10 @@ async function sendMessage() {
           try {
             const data = JSON.parse(line.substring(6));
 
-            if (data.type === 'conversational_start') {
+            if (data.type === 'search_start' || data.type === 'status' || (data.type.endsWith('_start') && data.type !== 'conversational_start' && data.type !== 'schemes_start' && data.type !== 'eligibility_start' && data.type !== 'names_only_start')) {
+              // Custom handling for status-only events: don't remove typing dots yet
+              renderResult(data);
+            } else if (data.type === 'conversational_start') {
               removeTyping();
               if (data.lang) serverLang = data.lang;
               streamingRow = document.createElement('div');
@@ -1213,7 +1234,7 @@ async function sendMessage() {
                 const pill = document.createElement('button');
                 pill.className = 'scheme-select-btn';
                 pill.textContent = s.scheme_name;
-                pill.onclick = () => askQuestion(s.scheme_name);
+                pill.onclick = () => askQuestion(s.scheme_name, true);
                 streamingBubble.appendChild(pill);
                 scrollBottom();
               }

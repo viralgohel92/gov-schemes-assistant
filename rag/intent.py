@@ -9,21 +9,24 @@ def is_direct_scheme_name_query(question: str) -> bool:
     if len(words) < 3:
         return False
         
-    conversational_starters = ["give me", "show me", "tell me", "find me", "what is", "which", "how", "can i", "do i", "am i", "is there", "are there"]
+    # 1. Conversational starters -> Not a direct name
     q_lower = q.lower()
+    conversational_starters = ["give me", "show me", "tell me", "find me", "what is", "which", "how", "can i", "do i", "am i", "is there", "are there"]
     if any(q_lower.startswith(s) for s in conversational_starters):
         return False
         
-    profile_keywords = ["age","income","salary","lakh","occupation","caste","obc","sc/st","ews"]
-    if any(kw in q_lower for kw in profile_keywords):
-        return False
-        
-    # EXCLUDE common category keywords from being treated as direct scheme names
-    category_keywords = ["farmer", "khedut", "kisan", "woman", "women", "girl", "lady", "mahila", "student", "scholarship", "housing", "awas", "health", "loan"]
-    if any(ck in q_lower for ck in category_keywords):
+    # 2. Category Search Patterns -> Not a direct name (Force Names-First)
+    # e.g., "schemes for farmers", "list of housing schemes", "gujarat schemes for women"
+    if re.search(r'\b(schemes?|yojnas?|yojanas?)\s+(for|in|of|about)\b', q_lower):
         return False
 
-    return False
+    # 3. Category keywords protection for short queries
+    # Block short generic searches like "Awas Yojana" but allow "Pandit Dindayal Upadhyay Awas Yojana"
+    category_keywords = ["farmer", "khedut", "kisan", "woman", "women", "girl", "lady", "mahila", "student", "scholarship", "housing", "awas", "health", "loan"]
+    if len(words) < 5 and any(ck in q_lower for ck in category_keywords):
+        return False
+
+    return True
 
 
 def detect_intent(question: str, chat_history: list, awaiting_profile: bool) -> str:
