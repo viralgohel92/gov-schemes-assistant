@@ -125,62 +125,34 @@ def _sql_fallback_search(query: str, k: int = 5):
             print(f"  Query too generic: {query}. Returning empty.")
             return []
 
-        # TIER 1: Match meaningful keywords (Expand synonyms as OR groups)
-        filters = []
+        # TIER 1: Search for ALL synonyms of all keywords
+        all_search_terms = set()
         for word in meaningful_keywords:
-            # Build an OR group for this keyword and its synonyms
-            syns = [word]
+            all_search_terms.add(word)
             for cat, s_list in SYNONYMS.items():
                 if word == cat or word in s_list:
-                    syns.extend(s_list)
-                    if cat not in syns: syns.append(cat)
-            
-            word_filters = []
-            for s_word in set(syns):
-                pattern = f"%{s_word}%"
-                word_filters.append(Scheme.scheme_name.ilike(pattern))
-                word_filters.append(Scheme.category.ilike(pattern))
-                word_filters.append(Scheme.description.ilike(pattern))
-            
-            filters.append(or_(*word_filters))
+                    all_search_terms.update(s_list)
+                    all_search_terms.add(cat)
         
-        # Build Case statement for basic ranking: Name matches are best
+        # Build Case statement for ranking: Name matches are best
         rank_conditions = []
-        for word in meaningful_keywords:
-            syns = [word]
-            for cat, s_list in SYNONYMS.items():
-                if word == cat or word in s_list:
-                    syns.extend(s_list)
-                    if cat not in syns: syns.append(cat)
-            
-            for s_word in set(syns):
-                rank_conditions.append((Scheme.scheme_name.ilike(f"%{s_word}%"), 10))
-                rank_conditions.append((Scheme.category.ilike(f"%{s_word}%"), 5))
+        or_filters = []
+        for s_word in all_search_terms:
+            pattern = f"%{s_word}%"
+            # Filters
+            or_filters.append(Scheme.scheme_name.ilike(pattern))
+            or_filters.append(Scheme.category.ilike(pattern))
+            or_filters.append(Scheme.description.ilike(pattern))
+            # Ranking
+            rank_conditions.append((Scheme.scheme_name.ilike(pattern), 50))
+            rank_conditions.append((Scheme.category.ilike(pattern), 20))
+            rank_conditions.append((Scheme.description.ilike(pattern), 5))
 
         # Build order_by using Case
         order_case = case(*rank_conditions, else_=0)
         
-        # Try finding AND matches first (more specific)
-        # Note: We prioritize category matches here for boarder chip queries
-        schemes = session.query(Scheme).filter(and_(*filters)).order_by(desc(order_case)).limit(k).all()
-        
-        # TIER 2: If no "AND" matches, fall back to a weighted "OR" search
-        if not schemes:
-            print(f"  No exact AND matches. Trying broad OR search for keywords...")
-            all_syns = []
-            for w in meaningful_keywords:
-                all_syns.append(w)
-                for cat, syn_list in SYNONYMS.items():
-                    if w == cat or w in syn_list:
-                        all_syns.extend(syn_list)
-            
-            or_filters = []
-            for kw in set(all_syns):
-                or_filters.append(Scheme.scheme_name.ilike(f"%{kw}%"))
-                or_filters.append(Scheme.category.ilike(f"%{kw}%"))
-                or_filters.append(Scheme.description.ilike(f"%{kw}%"))
-            
-            schemes = session.query(Scheme).filter(or_(*or_filters)).order_by(desc(order_case)).limit(k).all()
+        # We always use OR search but order by match strength to avoid "no results"
+        schemes = session.query(Scheme).filter(or_(*or_filters)).order_by(desc(order_case)).limit(k).all()
         
         docs = []
         for s in schemes:

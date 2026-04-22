@@ -317,7 +317,10 @@ def ask():
         except Exception as e:
             yield f"data: {json.dumps({'error': str(e)})}\n\n"
     
-    return Response(stream_with_context(generate()), mimetype='text/event-stream')
+    response = Response(stream_with_context(generate()), mimetype='text/event-stream')
+    response.headers['Cache-Control'] = 'no-cache'
+    response.headers['X-Accel-Buffering'] = 'no'
+    return response
     
 
 
