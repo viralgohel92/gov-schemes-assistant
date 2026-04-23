@@ -36,6 +36,11 @@ warnings.filterwarnings("ignore")
 app = Flask(__name__)
 app.secret_key = "your-secret-key-change-this"  # Change this in production
 
+# Define a safe temporary directory (works on Windows & Linux/Serverless)
+TEMP_FOLDER = os.path.join(REPO_ROOT, "tmp")
+if not os.path.exists(TEMP_FOLDER):
+    os.makedirs(TEMP_FOLDER, exist_ok=True)
+
 # -------------------------------------------------
 #   Global Exception Handling & Email Alerts
 # -------------------------------------------------
@@ -294,40 +299,71 @@ def ask():
     from flask import Response, stream_with_context
     import json
     from rag.agent import ask_agent
+    from rag.memory import seed_session_from_db
     
     data = request.get_json()
     q = data.get("question", "").strip()
     ui_lang = data.get("lang")
-    session_id = session.get("session_id", "user_1")
     
+    # --- Thread-wise Memory ---
+    # If the user is logged in and sends a chat_id, use it as the unique RAG session.
+    # This ensures each thread has isolated AI memory.
+    # For anonymous users, fall back to the single browser session_id.
+    chat_id = data.get("chat_id")   # Sent by the frontend
+    user_id = session.get("user_id")
+
+    if user_id and chat_id:
+        # Logged-in user resuming an existing thread
+        rag_session_id = f"thread_{chat_id}"
+        # Seed in-memory history from DB so context survives server restarts
+        db = SessionLocal()
+        try:
+            existing_chat = db.query(ChatHistory).filter(
+                ChatHistory.id == chat_id,
+                ChatHistory.user_id == user_id
+            ).first()
+            if existing_chat and existing_chat.messages:
+                seed_session_from_db(rag_session_id, existing_chat.messages)
+        finally:
+            db.close()
+    elif user_id and not chat_id:
+        # Logged-in user starting a BRAND NEW thread (chat_id will be created after first message)
+        # Use a temporary unique id; frontend will send chat_id on subsequent messages
+        rag_session_id = f"thread_new_{session.get('session_id', str(uuid.uuid4()))}"
+    else:
+        # Anonymous user: use the single browser session
+        rag_session_id = session.get("session_id", "user_1")
+
     if not q:
         return jsonify({"error": "Empty question"}), 400
     
     # Check if user is logged in to provide context
     user_context = None
-    if "user_id" in session:
+    if user_id:
         db = SessionLocal()
-        user = db.query(User).filter(User.id == session["user_id"]).first()
+        user = db.query(User).filter(User.id == user_id).first()
         if user:
             user_context = {
+                "name": user.full_name,
                 "age": user.age,
                 "gender": user.gender,
                 "income": str(user.income) if user.income else None,
                 "occupation": user.occupation,
-                "state": user.residence, # Map residence to state
-                "caste_category": user.category # Map category to caste_category
+                "state": user.residence,
+                "caste_category": user.category
             }
         db.close()
 
     def generate():
         try:
-            for chunk in ask_agent(q, session_id=session_id, ui_lang=ui_lang, user_context=user_context):
+            for chunk in ask_agent(q, session_id=rag_session_id, ui_lang=ui_lang, user_context=user_context):
                 yield f"data: {json.dumps(chunk)}\n\n"
         except Exception as e:
             yield f"data: {json.dumps({'error': str(e)})}\n\n"
     
     return Response(stream_with_context(generate()), mimetype='text/event-stream')
-   
+
+
 @app.route("/stt", methods=["POST"])
 def speech_to_text():
     if 'audio' not in request.files:
@@ -340,7 +376,8 @@ def speech_to_text():
         os.makedirs(temp_dir)
         
     temp_filename = f"stt_{uuid.uuid4()}.webm"
-    temp_path = os.path.join(temp_dir, temp_filename)
+    temp_path = os.path.join(TEMP_FOLDER, temp_filename)
+
     audio_file.save(temp_path)
     
     lang = request.args.get("lang", "en")
@@ -401,7 +438,8 @@ def text_to_speech():
             os.makedirs(temp_dir)
             
         temp_filename = f"tts_{uuid.uuid4()}.mp3"
-        temp_path = os.path.join(temp_dir, temp_filename)
+        temp_path = os.path.join(TEMP_FOLDER, temp_filename)
+
         
         # Run the async function from sync Flask
         asyncio.run(generate_speech(text, lang, temp_path))
@@ -839,10 +877,8 @@ def whatsapp_webhook():
             media_response = requests.get(media_url, auth=auth)
             
             temp_ext = media_type.split('/')[-1]
-            temp_dir = os.path.join(app.root_path, "temp")
-            if not os.path.exists(temp_dir):
-                os.makedirs(temp_dir)
-            temp_path = os.path.join(temp_dir, f"wa_voice_{uuid.uuid4()}.{temp_ext}")
+            temp_path = os.path.join(TEMP_FOLDER, f"wa_voice_{uuid.uuid4()}.{temp_ext}")
+
             
             with open(temp_path, "wb") as f:
                 f.write(media_response.content)
@@ -935,17 +971,25 @@ def tts_wa():
     if any('\u0a80' <= c <= '\u0aff' for c in text): lang = "gu"
     elif any('\u0900' <= c <= '\u097f' for c in text): lang = "hi"
     
-    temp_dir = os.path.join(app.root_path, "temp")
-    if not os.path.exists(temp_dir):
-        os.makedirs(temp_dir)
-    temp_path = os.path.join(temp_dir, f"wa_reply_{uuid.uuid4()}.mp3")
-    
+    temp_path = os.path.join(TEMP_FOLDER, f"wa_reply_{uuid.uuid4()}.mp3")
+
     asyncio.run(generate_speech(text, lang, temp_path))
     return send_file(temp_path, mimetype="audio/mpeg")
 
 
 @app.route("/reset", methods=["POST"])
 def reset():
+    """Start a new chat thread: refresh session_id and optionally clear a specific thread's RAG memory."""
+    from rag.memory import store as rag_store
+    data = request.get_json(silent=True) or {}
+    
+    # If a specific chat thread is being closed/cleared, remove it from in-memory RAG store
+    old_chat_id = data.get("chat_id")
+    if old_chat_id:
+        thread_key = f"thread_{old_chat_id}"
+        rag_store.pop(thread_key, None)
+
+    # Refresh the browser session_id for anonymous users
     session["session_id"] = str(uuid.uuid4())
     return jsonify({"status": "ok"})
 

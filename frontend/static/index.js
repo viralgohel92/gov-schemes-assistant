@@ -580,7 +580,7 @@ function switchChat(chatData) {
 }
 
 async function saveChat(userMsg, aiResult) {
-  if (!currentUser) return;
+  if (!currentUser) return null;
   currentChatMessages.push({ role: 'user', content: userMsg }, { role: 'assistant', result: aiResult });
   
   // Only suggest/send a title on the very first message save of a new chat
@@ -593,7 +593,12 @@ async function saveChat(userMsg, aiResult) {
   });
   
   const data = await res.json();
-  if (res.ok) { currentChatId = data.chat_id; loadHistory(); }
+  if (res.ok) {
+    currentChatId = data.chat_id;
+    loadHistory();
+    return data.chat_id;  // Thread-wise: return chat_id so sendMessage can update currentChatId
+  }
+  return null;
 }
 
 function autoResize(el) {
@@ -720,6 +725,7 @@ function renderResult(result) {
       </div>`).join('');
 
     content = `<div class="bubble ai">
+      ${result.preface ? `<div style="margin-bottom:12px;font-size:15px;color:var(--fg);line-height:1.5">${escapeHtml(result.preface)}</div>` : ''}
       <strong style="color:var(--saffron);font-family:'Rajdhani',sans-serif;font-size:15px;">🎯 Eligible Schemes Found (${schemes.length})</strong>
       ${profileLines ? `<div style="margin-top:8px;font-size:12px;color:var(--muted);line-height:1.8">${profileLines}</div>` : ''}
       ${schemeCards}
@@ -984,7 +990,7 @@ async function sendMessage() {
     const res = await fetch('/ask', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ question: q, lang: currentLang })
+      body: JSON.stringify({ question: q, lang: currentLang, chat_id: currentChatId })
     });
     
     if (!res.ok) {
@@ -1031,7 +1037,9 @@ async function sendMessage() {
               if (streamingRow) streamingRow.remove();
               const result = { type: 'conversational', reply: fullText, lang: serverLang };
               renderResult(result);
-              saveChat(q, result);
+              // Thread-wise: await saveChat and capture the returned chat_id for new threads
+              const newId1 = await saveChat(q, result);
+              if (newId1 && !currentChatId) currentChatId = newId1;
             } else if (data.type === 'schemes_start') {
               removeTyping();
               const row = document.createElement('div');
@@ -1066,12 +1074,14 @@ async function sendMessage() {
               if (streamingRow) streamingRow.remove();
               data.type = 'full_detail'; data.lang = serverLang;
               renderResult(data);
-              saveChat(q, data);
+              const newId2 = await saveChat(q, data);
+              if (newId2 && !currentChatId) currentChatId = newId2;
             } else {
               removeTyping();
               if (!data.lang) data.lang = serverLang;
               renderResult(data);
-              saveChat(q, data);
+              const newId3 = await saveChat(q, data);
+              if (newId3 && !currentChatId) currentChatId = newId3;
             }
           } catch(e) {
              console.error("Error processing stream line:", e, line);
@@ -1087,11 +1097,18 @@ async function sendMessage() {
     isGenerating = false;
     if (suggestionBox) suggestionBox.classList.remove('disabled');
     input.readOnly = false;
+    input.focus();
+
   }
 }
 
 async function clearChat() {
-  await fetch('/reset', { method: 'POST' });
+  // Pass the old chat_id to the server so it can clear the thread's RAG memory
+  await fetch('/reset', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ chat_id: currentChatId })
+  });
   currentChatId = null;
   currentChatMessages = [];
   chat.innerHTML = `<div class="welcome-card">

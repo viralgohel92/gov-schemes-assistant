@@ -123,6 +123,7 @@ IMPORTANT RULES:
 1. If user types a scheme CATEGORY or TOPIC like "housing scheme", "loan scheme", "farmer scheme"   classify as names_only (NOT eligibility_for_shown)
 2. Only use eligibility_for_shown when the user EXPLICITLY asks about their own eligibility
 3. eligibility_check requires the user to share personal data (age, income, caste, occupation etc.)
+4. If the user asks about their OWN details (e.g. "what is my name?", "what is my occupation?", "who am I?"), classify as conversational.
 
 Reply with ONLY the intent label, nothing else.
 """

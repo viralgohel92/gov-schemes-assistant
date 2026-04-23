@@ -432,6 +432,8 @@ def fetch_schemes(question: str, chat_history: list, k: int = 5, last_schemes: l
         return []
 
 
+    if not result or not hasattr(result, 'schemes'):
+        return []
 
     return result.schemes
 
