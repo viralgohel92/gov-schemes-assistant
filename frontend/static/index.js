@@ -141,6 +141,16 @@ async function speakText(text, btn, lang) {
     btn.dataset.speaking = '1';
     
     audio.onplay = () => { btn.textContent = '⏹ Stop'; };
+    
+    audio.onerror = (e) => {
+      console.error("Audio playback error:", e);
+      btn.textContent = '❌ Error';
+      setTimeout(() => {
+        btn.textContent = '🔊 Listen';
+        btn.dataset.speaking = '0';
+      }, 2000);
+      if (container) container.classList.remove('reading-active');
+    };
 
     const cleanup = () => {
       if (btn) {
@@ -195,12 +205,10 @@ function updateThemeIcon(isDark) {
 
 function initTheme() {
   const savedTheme = localStorage.getItem('theme');
-  let isDark = false;
+  let isDark = true; // Default to dark 
   
   if (savedTheme) {
     isDark = savedTheme === 'dark';
-  } else {
-    isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
   }
   
   if (isDark) {
@@ -324,6 +332,7 @@ async function handleResetPassword() {
 let currentUser = null;
 let currentChatId = null;
 let currentChatMessages = [];
+let isGenerating = false;
 
 async function handleLogin() {
   const email = document.getElementById('login-email').value;
@@ -660,10 +669,13 @@ function renderResult(result) {
     attachSpeak = { id: speakId, text: replyText };
   }
   else if (result.type === 'names_only') {
+    const speakId = 'speak-' + Date.now();
     content = `<div class="bubble ai">
       <strong style="color:var(--saffron);font-family:'Rajdhani',sans-serif;font-size:15px;">📋 Government Schemes Found</strong>
       <div style="margin-top:10px;line-height:2">${escapeHtml(result.reply)}</div>
+      <br><button class="speak-btn" id="${speakId}" data-speaking="0">🔊 Listen</button>
     </div>`;
+    attachSpeak = { id: speakId, text: result.reply };
   }
   else if (result.type === 'specific_field') {
     const field = (result.field || '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
@@ -681,19 +693,15 @@ function renderResult(result) {
       temp.innerHTML = cardHtml;
       const card = temp.firstElementChild;
       
-      // Manual binding for Listen button
       const btn = card.querySelector('.speak-btn');
-      if (btn) {
-        btn.onclick = () => speakText(btn.dataset.tts, btn);
-      }
+      if (btn) btn.onclick = () => speakText(btn.dataset.tts, btn);
       wrapper.appendChild(card);
     });
-    content = wrapper.outerHTML; // Wait, actually I should append wrapper directly
     row.innerHTML = avatar;
     row.appendChild(wrapper);
     chat.appendChild(row);
     scrollBottom();
-    return; // handle manually
+    // Do NOT return here, so it flows into auto-read logic below
   }
   else if (result.type === 'eligibility_result') {
     const schemes = result.schemes || [];
@@ -709,7 +717,7 @@ function renderResult(result) {
           <span style="background:var(--green);color:white;border-radius:50%;width:22px;height:22px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0">${i+1}</span>
           <strong style="color:var(--saffron);font-size:14px">${escapeHtml(s.scheme_name || '')}</strong>
         </div>
-        ${s.why_eligible ? `<div style="color:#138808;font-size:12px;margin-top:4px">✅ ${escapeHtml(s.why_eligible)}</div>` : ''}
+        ${s.why_eligible ? `<div style="color:var(--green);font-size:12px;margin-top:4px">✅ ${escapeHtml(s.why_eligible)}</div>` : ''}
         ${s.category ? `<div style="color:var(--muted);font-size:12px;margin-top:3px">📂 ${escapeHtml(s.category)}</div>` : ''}
         ${s.state ? `<div style="color:var(--muted);font-size:12px;margin-top:3px">📍 ${escapeHtml(s.state)}</div>` : ''}
         ${s.official_link && !['not available','n/a','none',''].includes((s.official_link||'').toLowerCase())
@@ -737,7 +745,7 @@ function renderResult(result) {
 
     const schemeRows = schemes.map((s, i) => {
       const icon = s.is_eligible ? '✅' : '❌';
-      const color = s.is_eligible ? '#138808' : '#c00';
+      const color = s.is_eligible ? 'var(--green)' : 'var(--red, #e53e3e)';
       return `<div style="display:flex;gap:8px;padding:8px 0;border-bottom:1px solid var(--border);">
         <span style="font-size:15px;flex-shrink:0">${icon}</span>
         <div>
@@ -766,9 +774,11 @@ function renderResult(result) {
     content = `<div class="bubble ai" style="color:var(--muted);">Received an unexpected response. Please try again.</div>`;
   }
 
-  row.innerHTML = avatar + content;
-  chat.appendChild(row);
-  scrollBottom();
+  if (result.type !== 'full_detail') {
+    row.innerHTML = avatar + content;
+    chat.appendChild(row);
+    scrollBottom();
+  }
 
   const responseLang = result.lang || currentLang;
 
@@ -962,13 +972,18 @@ function buildSchemeCard(s, i) {
 }
 
 async function sendMessage() {
+  if (isGenerating) return;
   const q = input.value.trim();
   if (!q) return;
 
+  isGenerating = true;
   addUserMessage(q);
   input.value = '';
   input.style.height = 'auto';
+  if (suggestionBox) suggestionBox.classList.add('disabled');
   sendBtn.disabled = true;
+  input.readOnly = true;
+
   const typing = addTyping();
 
   try {
@@ -1079,7 +1094,11 @@ async function sendMessage() {
     renderResult({ error: 'Network error. Please try again.' });
   } finally {
     sendBtn.disabled = false;
+    isGenerating = false;
+    if (suggestionBox) suggestionBox.classList.remove('disabled');
+    input.readOnly = false;
     input.focus();
+
   }
 }
 
@@ -1261,6 +1280,7 @@ const QUICK_START = {
 };
 
 function showSuggestions() {
+  if (isGenerating) return;
   const q = input.value.trim();
   if (!q) {
     renderSuggestions(QUICK_START[currentLang]);
@@ -1322,8 +1342,9 @@ function renderSuggestions(list) {
 }
 
 function selectSuggestion(text) {
+  if (isGenerating) return;
   input.value = text;
-  suggestionBox.classList.add('hidden');
+  if (suggestionBox) suggestionBox.classList.add('hidden');
   autoResize(input);
   sendMessage();
 }

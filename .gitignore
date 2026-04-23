@@ -58,7 +58,7 @@ scratch/
 # Logs / temp
 *.log
 *.tmp
-*.temp
+*.tempz
 tmp/
 temp/
 

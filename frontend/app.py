@@ -45,9 +45,25 @@ if not os.path.exists(TEMP_FOLDER):
 #   Global Exception Handling & Email Alerts
 # -------------------------------------------------
 
+# Dictionary to track last sent time of errors to prevent spam
+# Format: { error_key: last_sent_datetime }
+ERROR_COOLDOWN = {}
+COOLDOWN_PERIOD = datetime.timedelta(minutes=30)
+
 @app.errorhandler(Exception)
 def handle_exception(e):
     """Captures unhandled exceptions and notifies the administrator."""
+    # Ignore standard HTTP Errors (e.g., 404, 405, 401)
+    from werkzeug.exceptions import HTTPException
+    if isinstance(e, HTTPException):
+        if getattr(e, 'code', 500) < 500:
+            return e  # Let Flask handle it normally
+            
+    # Ignore broken pipes and client disconnects
+    if isinstance(e, (ConnectionResetError, BrokenPipeError, TimeoutError)):
+        app.logger.warning(f"Client connection closed: {e}")
+        return jsonify({"error": "Connection closed"}), 499
+
     # 1. Log the error locally
     app.logger.error(f"Unhandled Exception: {e}")
     trace = traceback.format_exc()
@@ -60,17 +76,45 @@ def handle_exception(e):
     request_data = request.get_data(as_text=True) or "None"
     
     # 3. Format error alert email
-    admin_email = os.getenv("SMTP_USERNAME") # Default to sender email
-    subject = f"🚨 API Error Alert: {str(e)[:50]}"
+    admin_email = os.getenv("SMTP_USERNAME") 
+    subject = f"🚨 Yojana AI Error: {str(e)[:50]}"
     
+    # --- THROTTLING LOGIC ---
+    # We use a key based on the error message and the location of the error (last line of trace)
+    try:
+        error_lines = [l for l in trace.split('\n') if l.strip()]
+        last_stack = error_lines[-2] if len(error_lines) > 2 else "Unknown"
+        error_key = f"{type(e).__name__}: {str(e)} | {last_stack}"
+    except:
+        error_key = f"{type(e).__name__}: {str(e)}"
+
+    now = datetime.datetime.now()
+    if error_key in ERROR_COOLDOWN:
+        if now - ERROR_COOLDOWN[error_key] < COOLDOWN_PERIOD:
+            app.logger.info(f"Suppressed duplicate error email for: {error_key}")
+            # Still return the error response but skip the email
+            return jsonify({
+                "error": "Internal Server Error",
+                "message": "An error occurred. Our team is already aware and working on it.",
+                "type": "server_error"
+            }), 500
+
+    # Update cooldown tracker
+    ERROR_COOLDOWN[error_key] = now
+    # -------------------------
+
     html_body = f"""
     <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; border: 2px solid #ff4d4d; padding: 25px; border-radius: 12px; max-width: 800px; margin: auto;">
-        <h2 style="color: #d11a2a; text-align: center;">Yojana AI: Critical Error Alert</h2>
+        <h2 style="color: #d11a2a; text-align: center;">Yojana AI: Internal API Error Alert</h2>
         <hr style="border: 1px solid #d11a2a; margin-bottom: 20px;">
         
+        <p style="background: #fff5f5; padding: 10px; border-left: 5px solid #d11a2a;">
+            <strong>Note:</strong> This error will be suppressed for the next 30 minutes to avoid flooding your inbox.
+        </p>
+
         <table style="width: 100%; border-collapse: collapse;">
             <tr><td style="padding: 8px; font-weight: bold; width: 30%;">Error Message:</td><td style="padding: 8px;">{str(e)}</td></tr>
-            <tr><td style="padding: 8px; font-weight: bold;">Timestamp:</td><td style="padding: 8px;">{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</td></tr>
+            <tr><td style="padding: 8px; font-weight: bold;">Timestamp:</td><td style="padding: 8px;">{now.strftime('%Y-%m-%d %H:%M:%S')}</td></tr>
             <tr><td style="padding: 8px; font-weight: bold;">Request URL:</td><td style="padding: 8px;">{request_url}</td></tr>
             <tr><td style="padding: 8px; font-weight: bold;">HTTP Method:</td><td style="padding: 8px;">{request_method}</td></tr>
             <tr><td style="padding: 8px; font-weight: bold;">User context:</td><td style="padding: 8px;">{user_name} (ID: {user_id})</td></tr>
@@ -92,8 +136,6 @@ def handle_exception(e):
     """
     
     # 4. Send the alert
-    # We do this in a thread or simple call. Given this is an error handler,
-    # we'll try to send it quickly.
     try:
          send_email(
             to_email=admin_email,
@@ -329,8 +371,13 @@ def speech_to_text():
     
     audio_file = request.files['audio']
     # Use a unique name to avoid collisions
+    temp_dir = os.path.join(app.root_path, "temp")
+    if not os.path.exists(temp_dir):
+        os.makedirs(temp_dir)
+        
     temp_filename = f"stt_{uuid.uuid4()}.webm"
     temp_path = os.path.join(TEMP_FOLDER, temp_filename)
+
     audio_file.save(temp_path)
     
     lang = request.args.get("lang", "en")
@@ -386,8 +433,13 @@ def text_to_speech():
     
     try:
         # Create a temporary file name for TTS
+        temp_dir = os.path.join(app.root_path, "temp")
+        if not os.path.exists(temp_dir):
+            os.makedirs(temp_dir)
+            
         temp_filename = f"tts_{uuid.uuid4()}.mp3"
         temp_path = os.path.join(TEMP_FOLDER, temp_filename)
+
         
         # Run the async function from sync Flask
         asyncio.run(generate_speech(text, lang, temp_path))
@@ -395,6 +447,10 @@ def text_to_speech():
         return send_file(temp_path, mimetype="audio/mpeg")
         
     except Exception as e:
+        import traceback
+        with open("tts_error.log", "a", encoding="utf-8") as f:
+            f.write(f"\n--- {datetime.datetime.now()} ---\n")
+            traceback.print_exc(file=f)
         print(f"TTS Error: {e}")
         return jsonify({"error": str(e)}), 500
 
@@ -822,6 +878,7 @@ def whatsapp_webhook():
             
             temp_ext = media_type.split('/')[-1]
             temp_path = os.path.join(TEMP_FOLDER, f"wa_voice_{uuid.uuid4()}.{temp_ext}")
+
             
             with open(temp_path, "wb") as f:
                 f.write(media_response.content)
@@ -915,6 +972,7 @@ def tts_wa():
     elif any('\u0900' <= c <= '\u097f' for c in text): lang = "hi"
     
     temp_path = os.path.join(TEMP_FOLDER, f"wa_reply_{uuid.uuid4()}.mp3")
+
     asyncio.run(generate_speech(text, lang, temp_path))
     return send_file(temp_path, mimetype="audio/mpeg")
 
@@ -925,13 +983,18 @@ def reset():
     from rag.memory import store as rag_store
     data = request.get_json(silent=True) or {}
     
-    # If a specific chat thread is being closed/cleared, remove it from in-memory RAG store
+    # 1. Clear any specific thread memory passed from frontend
     old_chat_id = data.get("chat_id")
     if old_chat_id:
-        thread_key = f"thread_{old_chat_id}"
-        rag_store.pop(thread_key, None)
+        rag_store.pop(f"thread_{old_chat_id}", None)
 
-    # Refresh the browser session_id for anonymous users
+    # 2. ALSO clear the current browser-session based memory (important for anonymous/new users)
+    current_sid = session.get("session_id")
+    if current_sid:
+        rag_store.pop(current_sid, None)
+        rag_store.pop(f"thread_new_{current_sid}", None)
+
+    # 3. Refresh the browser session_id
     session["session_id"] = str(uuid.uuid4())
     return jsonify({"status": "ok"})
 

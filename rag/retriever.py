@@ -162,7 +162,6 @@ def _sql_fallback_search(query: str, k: int = 5):
     when vector search returns empty (e.g. documents table is empty).
     Returns list of Document objects matching the format expected by the RAG pipeline.
     """
-    from langchain_core.documents import Document
     try:
         from database.db import SessionLocal
         from database.models import Scheme
