@@ -38,7 +38,7 @@ def get_total_scheme_count() -> int:
         except:
             return 0
 
-def conversational_reply_stream(question: str, chat_history: list, lang: str = "en", intent: str = "conversational"):
+def conversational_reply_stream(question: str, chat_history: list, lang: str = "en", intent: str = "conversational", profile: UserProfile = None):
     # \u2500\u2500 Greeting 
     if intent == "greeting":
         greetings = {
@@ -70,8 +70,21 @@ def conversational_reply_stream(question: str, chat_history: list, lang: str = "
         "gu": "Always reply in Gujarati (Gujarati script).",
         "en": "Reply in English.",
     }.get(lang, "Reply in English.")
+    profile_info = ""
+    if profile:
+        details = []
+        if profile.name: details.append(f"Name: {profile.name}")
+        if profile.occupation: details.append(f"Occupation: {profile.occupation}")
+        if profile.income: details.append(f"Income: {profile.income}")
+        if profile.age: details.append(f"Age: {profile.age}")
+        if profile.gender: details.append(f"Gender: {profile.gender}")
+        if profile.caste_category: details.append(f"Category: {profile.caste_category}")
+        
+        if details:
+            profile_info = "\n\nUser Profile:\n" + "\n".join(details) + "\n\nCRITICAL INSTRUCTION: If the user asks for their specific details (like 'what is my name?' or 'what is my occupation?'), you MUST answer using the User Profile above. Keep your answer ONLY to the requested specific details."
+
     prompt = f"""You are Yojana AI, the official Gujarat government scheme assistant. 
-{lang_instruction}
+{lang_instruction}{profile_info}
 
 Guidelines:
 1. Provide accurate information about government schemes based on the database.
@@ -203,7 +216,13 @@ def ask_agent(question: str, session_id: str = "user_1", ui_lang: str = None, us
 
         save_to_history(session_id, question, f"Found {len(eligible)} eligible schemes.")
         session["last_schemes"] = eligible
-        yield {"type": "eligibility_result", "profile": profile.model_dump(), "schemes": eligible, "lang": lang}
+        
+        # Conversational preface
+        from rag.llm import get_llm
+        preface_prompt = f"The user asked: '{question}'. You found {len(eligible)} eligible schemes. Write a brief, friendly 1-2 sentence response acknowledging their input (and name if provided, e.g. 'Hi Viral, here are some schemes for farmers...') and saying here are the schemes. Do NOT list the schemes."
+        preface = get_llm().invoke(preface_prompt).content.strip()
+
+        yield {"type": "eligibility_result", "profile": profile.model_dump(), "schemes": eligible, "lang": lang, "preface": preface}
         return
 
     # \u2500\u2500 User asks eligibility for previously shown schemes 
@@ -266,7 +285,12 @@ def ask_agent(question: str, session_id: str = "user_1", ui_lang: str = None, us
                 return
             save_to_history(session_id, question, f"Found {len(eligible)} eligible schemes.")
             session["last_schemes"] = eligible
-            yield {"type": "eligibility_result", "profile": profile.model_dump(), "schemes": eligible, "lang": lang}
+            
+            from rag.llm import get_llm
+            preface_prompt = f"The user asked: '{question}'. You found {len(eligible)} eligible schemes. Write a brief, friendly 1-2 sentence response acknowledging their input (and name if provided, e.g. 'Hi Viral, here are some schemes for farmers...') and saying here are the schemes. Do NOT list the schemes."
+            preface = get_llm().invoke(preface_prompt).content.strip()
+
+            yield {"type": "eligibility_result", "profile": profile.model_dump(), "schemes": eligible, "lang": lang, "preface": preface}
             return
 
         if last_schemes:
@@ -311,7 +335,12 @@ def ask_agent(question: str, session_id: str = "user_1", ui_lang: str = None, us
             return
         save_to_history(session_id, question, f"Found {len(eligible)} eligible schemes.")
         session["last_schemes"] = eligible
-        yield {"type": "eligibility_result", "profile": profile.model_dump(), "schemes": eligible, "lang": lang}
+        
+        from rag.llm import get_llm
+        preface_prompt = f"The user asked: '{question}'. You found {len(eligible)} eligible schemes. Write a brief, friendly 1-2 sentence response acknowledging their input (and name if provided, e.g. 'Hi Viral, here are some schemes for farmers...') and saying here are the schemes. Do NOT list the schemes."
+        preface = get_llm().invoke(preface_prompt).content.strip()
+
+        yield {"type": "eligibility_result", "profile": profile.model_dump(), "schemes": eligible, "lang": lang, "preface": preface}
         return
 
     # \u2500\u2500 Sequential Step: Common analysis
@@ -425,7 +454,12 @@ def ask_agent(question: str, session_id: str = "user_1", ui_lang: str = None, us
             yield {"type": "conversational", "reply": reply, "lang": lang}
             return
             
-        names_text = "\n".join(f"{i+1}. {s.scheme_name}" for i, s in enumerate(selected))
+        # Generate a conversational preface to make it more user friendly
+        from rag.llm import get_llm
+        preface_prompt = f"The user asked: '{question}'. You have found {len(selected)} government schemes matching their request. Write a very brief, friendly 1-2 sentence response acknowledging their input (and their name if they provided one, e.g. 'Hi Viral, since you are a farmer...') and saying here are the schemes. Do NOT list the schemes yourself."
+        preface = get_llm().invoke(preface_prompt).content.strip()
+
+        names_text = preface + "\n\n" + "\n".join(f"{i+1}. {s.scheme_name}" for i, s in enumerate(selected))
         names_text += "\n\n  Ask me for full details of any scheme above."
         reply = reply_in_lang(names_text)
         save_to_history(session_id, question, reply)
@@ -454,7 +488,7 @@ def ask_agent(question: str, session_id: str = "user_1", ui_lang: str = None, us
     if intent in ("conversational", "greeting", "scheme_count"):
         yield {"type": "conversational_start", "lang": lang}
         full_reply = ""
-        for chunk in conversational_reply_stream(question, chat_history, lang, intent=intent):
+        for chunk in conversational_reply_stream(question, chat_history, lang, intent=intent, profile=session.get("user_profile")):
             full_reply += chunk
             yield {"type": "chunk", "text": chunk}
         save_to_history(session_id, question, full_reply)

@@ -3,6 +3,7 @@ import time
 from typing import List
 from concurrent.futures import ThreadPoolExecutor
 from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.documents import Document
 from rag.llm import get_vector_db, get_structured_llm, get_minimal_structured_llm, SchemeOutput
 from rag.utils import format_docs, scheme_name_similarity
 from rag.intent import is_direct_scheme_name_query, rewrite_question
@@ -432,6 +433,8 @@ def fetch_schemes(question: str, chat_history: list, k: int = 5, last_schemes: l
         return []
 
 
+    if not result or not hasattr(result, 'schemes'):
+        return []
 
     return result.schemes
 

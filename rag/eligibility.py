@@ -30,7 +30,7 @@ def extract_user_profile(question: str) -> UserProfile:
     try:
         profile = get_profile_llm().invoke(f"""Extract user profile from this message for government scheme eligibility.
 Message: "{question}"
-Extract: age, income, occupation, state, gender, caste_category (SC/ST/OBC/General/EWS/SEBC/NT/DNT/Minority), extra info.
+Extract: name, age, income, occupation, state, gender, caste_category (SC/ST/OBC/General/EWS/SEBC/NT/DNT/Minority), extra info.
 Leave null if not mentioned.""")
         if profile.income:
             profile.income = normalize_income(profile.income)
