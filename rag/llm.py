@@ -1,7 +1,7 @@
 import os
 from langchain_mistralai import ChatMistralAI
 from langchain_huggingface import HuggingFaceEndpointEmbeddings
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from typing import List, Optional
 from langchain_core.documents import Document
 
@@ -20,6 +20,13 @@ class SchemeOutput(BaseModel):
     state: str = Field(description="State where the scheme is applicable")
     official_link: str = Field(description="Official website or link for the scheme")
 
+    @field_validator("description", "benefits", "eligibility", "documents_required", "application_process", mode="before")
+    @classmethod
+    def ensure_string(cls, v):
+        if isinstance(v, list):
+            return "\n".join(v)
+        return v
+
 class SchemesListOutput(BaseModel):
     schemes: List[SchemeOutput] = Field(description="List of all government schemes found in the context")
 
@@ -37,6 +44,13 @@ class TranslatedScheme(BaseModel):
     documents_required: Optional[str] = Field(None)
     application_process: Optional[str] = Field(None)
     category: Optional[str] = Field(None)
+
+    @field_validator("description", "benefits", "eligibility", "documents_required", "application_process", mode="before")
+    @classmethod
+    def ensure_string(cls, v):
+        if isinstance(v, list):
+            return "\n".join(v)
+        return v
 
 class SuggestionOutput(BaseModel):
     name: str = Field(description="Localized scheme name")

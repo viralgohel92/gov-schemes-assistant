@@ -36,10 +36,13 @@ warnings.filterwarnings("ignore")
 app = Flask(__name__)
 app.secret_key = "your-secret-key-change-this"  # Change this in production
 
-import tempfile
-
-# Define a safe temporary directory that works on Windows and Vercel's read-only filesystem
-TEMP_FOLDER = tempfile.gettempdir()
+# Define a safe temporary directory (works on Windows & Linux/Serverless)
+# On Vercel/AWS Lambda, only /tmp is writable
+if os.path.exists("/tmp") and os.access("/tmp", os.W_OK):
+    TEMP_FOLDER = "/tmp"
+else:
+    TEMP_FOLDER = os.path.join(REPO_ROOT, "tmp")
+    os.makedirs(TEMP_FOLDER, exist_ok=True)
 
 # -------------------------------------------------
 #   Global Exception Handling & Email Alerts
@@ -370,10 +373,7 @@ def speech_to_text():
         return jsonify({"error": "No audio file provided"}), 400
     
     audio_file = request.files['audio']
-    # Use a unique name to avoid collisions
-    temp_dir = os.path.join(app.root_path, "temp")
-    if not os.path.exists(temp_dir):
-        os.makedirs(temp_dir)
+    # Use the global safe TEMP_FOLDER for temporary files
         
     temp_filename = f"stt_{uuid.uuid4()}.webm"
     temp_path = os.path.join(TEMP_FOLDER, temp_filename)
@@ -419,39 +419,50 @@ def speech_to_text():
             os.remove(temp_path)
 
 
-@app.route("/tts", methods=["GET"])
+@app.route("/tts", methods=["GET", "POST"])
 def text_to_speech():
     from flask import send_file
     import asyncio
     from utils.voice import generate_speech
     
-    text = request.args.get("text", "")
-    lang = request.args.get("lang", "en")
+    if request.method == "POST":
+        data = request.json
+        text = data.get("text", "")
+        lang = data.get("lang", "en")
+    else:
+        text = request.args.get("text", "")
+        lang = request.args.get("lang", "en")
     
     if not text:
         return jsonify({"error": "No text provided"}), 400
     
     try:
-        # Create a temporary file name for TTS
-        temp_dir = os.path.join(app.root_path, "temp")
-        if not os.path.exists(temp_dir):
-            os.makedirs(temp_dir)
-            
+        # Create a unique temporary file name
         temp_filename = f"tts_{uuid.uuid4()}.mp3"
         temp_path = os.path.join(TEMP_FOLDER, temp_filename)
 
+        # Run the async function from sync Flask safely
+        def run_async(coro):
+            try:
+                loop = asyncio.get_event_loop()
+            except RuntimeError:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+            return loop.run_until_complete(coro)
+
+        output_path = run_async(generate_speech(text, lang, temp_path))
         
-        # Run the async function from sync Flask
-        asyncio.run(generate_speech(text, lang, temp_path))
+        if not output_path or not os.path.exists(output_path):
+            return jsonify({"error": "TTS generation failed or no speakable text found"}), 500
         
-        return send_file(temp_path, mimetype="audio/mpeg")
+        # We don't delete immediately because send_file needs it. 
+        # In a real app, you'd use a background task or a cleanup job.
+        return send_file(output_path, mimetype="audio/mpeg")
         
     except Exception as e:
         import traceback
-        with open("tts_error.log", "a", encoding="utf-8") as f:
-            f.write(f"\n--- {datetime.datetime.now()} ---\n")
-            traceback.print_exc(file=f)
-        print(f"TTS Error: {e}")
+        trace = traceback.format_exc()
+        app.logger.error(f"TTS Error: {e}\n{trace}")
         return jsonify({"error": str(e)}), 500
 
 

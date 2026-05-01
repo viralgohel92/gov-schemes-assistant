@@ -46,7 +46,7 @@ function toggleVoice() {
       for (let i = event.resultIndex; i < event.results.length; ++i) {
         currentTranscript += event.results[i][0].transcript;
       }
-      
+      console.log("Speech Result:", currentTranscript);
       if (currentTranscript) {
         input.value = currentTranscript;
         autoResize(input);
@@ -54,11 +54,15 @@ function toggleVoice() {
     };
 
     recognition.onend = () => {
+      console.log("Speech Recognition Ended");
       stopVoiceUI();
     };
 
     recognition.onerror = (event) => {
-      console.error("Speech Recognition Error:", event.error);
+      console.error("Speech Recognition Error:", event.error, event.message);
+      if (event.error === 'not-allowed') {
+        alert("Microphone access denied. Please enable it in your browser settings.");
+      }
       stopVoiceUI();
     };
 
@@ -118,63 +122,66 @@ async function speakText(text, btn, lang) {
   }
 
   const targetLang = lang || currentLang;
-  const url = `/tts?text=${encodeURIComponent(text)}&lang=${targetLang}`;
-  const audio = new Audio(url);
-  currentAudio = audio;
-
-  // Ensure any existing reading state is cleared
-  document.querySelectorAll('.reading-active').forEach(el => el.classList.remove('reading-active'));
-
+  
   // Find the bubble or card associated with this button
   let container = null;
   if (btn) {
-    // If it's a bubble, use it. If it's a card, use the WHOLE card
     container = btn.closest('.bubble') || btn.closest('.scheme-card');
+    btn.textContent = '⌛...';
+    btn.dataset.speaking = '1';
   }
 
   if (container) {
     container.classList.add('reading-active');
   }
 
-  if (btn) {
-    btn.textContent = '⌛...';
-    btn.dataset.speaking = '1';
-    
-    audio.onplay = () => { btn.textContent = '⏹ Stop'; };
-    
-    audio.onerror = (e) => {
-      console.error("Audio playback error:", e);
-      btn.textContent = '❌ Error';
-      setTimeout(() => {
-        btn.textContent = '🔊 Listen';
-        btn.dataset.speaking = '0';
-      }, 2000);
-      if (container) container.classList.remove('reading-active');
-    };
+  try {
+    // We use POST to support very long texts (schemes list, etc)
+    const res = await fetch('/tts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text, lang: targetLang })
+    });
 
+    if (!res.ok) throw new Error(`Server returned ${res.status}`);
+
+    const blob = await res.blob();
+    const audioUrl = URL.createObjectURL(blob);
+    const audio = new Audio(audioUrl);
+    currentAudio = audio;
+
+    audio.onplay = () => { if (btn) btn.textContent = '⏹ Stop'; };
+    
     const cleanup = () => {
       if (btn) {
         btn.textContent = '🔊 Listen';
         btn.dataset.speaking = '0';
       }
       if (container) container.classList.remove('reading-active');
-      document.querySelectorAll('.tts-word.active').forEach(w => w.classList.remove('active'));
-      currentAudio = null;
+      URL.revokeObjectURL(audioUrl);
+      if (currentAudio === audio) currentAudio = null;
     };
 
     audio.onended = cleanup;
-    audio.onerror = cleanup;
+    audio.onerror = (e) => {
+      console.error("Audio playback error:", e);
+      cleanup();
+      if (btn) {
+        btn.textContent = '❌ Error';
+        setTimeout(() => { btn.textContent = '🔊 Listen'; }, 2000);
+      }
+    };
     audio.onpause = cleanup;
-  }
 
-  try {
     await audio.play();
   } catch (err) {
-    console.error("Playback failed:", err);
+    console.error("TTS Playback failed:", err);
     if (btn) {
-      btn.textContent = '🔊 Listen';
+      btn.textContent = '❌ Error';
       btn.dataset.speaking = '0';
+      setTimeout(() => { btn.textContent = '🔊 Listen'; }, 2000);
     }
+    if (container) container.classList.remove('reading-active');
   }
 }
 
@@ -464,6 +471,9 @@ window.onload = async () => {
     currentUser = data.user;
     updateUserUI();
     loadHistory();
+    loadNotifications();
+    // Check for new notifications every 5 minutes
+    setInterval(loadNotifications, 5 * 60 * 1000);
   }
 };
 
@@ -1238,15 +1248,7 @@ window.addEventListener('click', (e) => {
   }
 });
 
-// Update window.onload to also fetch notifications
-window.onload = async () => {
-    if (originalOnload) await originalOnload();
-    if (currentUser) {
-        loadNotifications();
-        // Check for new notifications every 5 minutes
-        setInterval(loadNotifications, 5 * 60 * 1000);
-    }
-};
+// Notifications are now initialized in the main window.onload above
 
 // ── Suggestion Box Logic ───────────────────────────────────────────────────
 const suggestionBox = document.getElementById('suggestion-box');
