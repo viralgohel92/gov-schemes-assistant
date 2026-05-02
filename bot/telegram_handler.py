@@ -80,23 +80,38 @@ async def process_text_and_reply(update: Update, text: str, chat_id: str, contex
     # Collect RAG response
     ui_lang = context.user_data.get('lang', 'en') if context else 'en'
     for chunk in ask_agent(text, session_id=session_id, user_context=user_context, ui_lang=ui_lang):
+        ctype = chunk.get('type')
+        
         # 1. Collect conversational text but SKIP UI-only placeholders
-        if chunk['type'] in ['chunk', 'conversational', 'names_only', 'specific_field']:
+        if ctype in ['chunk', 'conversational', 'names_only', 'names_only_start', 'names_only_end', 'specific_field']:
             incoming_chunk = chunk.get('text', '') or chunk.get('reply', '')
             # Filter UI placeholders
             if any(p in incoming_chunk for p in ["Loading cards", "Generating response", "Analyzing profile", "conversational_start", "conversational_end"]):
                 continue
             full_text += incoming_chunk
             
+        elif ctype == 'names_only_pill':
+            s = chunk.get('scheme', {})
+            name = s.get('scheme_name') or s.get('name', 'Unknown')
+            full_text += f"\n• {name}"
+
         # 2. Collect rich scheme data
-        elif chunk['type'] in ['convert_to_cards', 'full_detail']:
-            schemes_data = chunk.get('schemes', [])
-        elif chunk['type'] in ['eligibility_result', 'eligibility_for_shown']:
+        elif ctype in ['convert_to_cards', 'full_detail', 'schemes_end']:
+            # Use provided list if available, otherwise stay with aggregated schemes_data
+            if chunk.get('schemes'):
+                schemes_data = chunk.get('schemes')
+        
+        elif ctype == 'scheme_card':
+            s = chunk.get('scheme')
+            if s and s not in schemes_data:
+                schemes_data.append(s)
+            
+        elif ctype in ['eligibility_result', 'eligibility_for_shown', 'eligibility_start']:
             res_schemes = chunk.get('schemes', [])
             if res_schemes:
-                full_text += "\n\n  *Matching Schemes:*\n"
+                if "\n  *Matching Schemes:*" not in full_text:
+                    full_text += "\n\n  *Matching Schemes:*\n"
                 for i, s in enumerate(res_schemes):
-                    # Robust dict access
                     name = s.get('scheme_name') or s.get('name', 'Unknown Scheme')
                     why  = s.get('why_eligible') or s.get('reason', '')
                     full_text += f"{i+1}. *{name}*\n     {why}\n"
@@ -170,13 +185,18 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await process_text_and_reply(update, text, chat_id, context)
 
 async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    import tempfile
     chat_id = str(update.effective_chat.id)
     voice_file = await update.message.voice.get_file()
-    temp_ogg = f"tg_voice_{uuid.uuid4()}.ogg"
+    
+    # Use system temp directory for production compatibility
+    temp_dir = tempfile.gettempdir()
+    temp_ogg = os.path.join(temp_dir, f"tg_voice_{uuid.uuid4()}.ogg")
+    
     await voice_file.download_to_drive(temp_ogg)
     
     ui_lang = context.user_data.get('lang', 'en') if context else 'en'
-    print(f"DEBUG: Processing Telegram voice message in {ui_lang}...")
+    print(f"DEBUG: Processing Telegram voice message in {ui_lang}... Output: {temp_ogg}")
 
     try:
         if not GROQ_API_KEY:
@@ -208,7 +228,11 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
         print(f"DEBUG: Transcription successful: {transcription.text}")
         await process_text_and_reply(update, transcription.text, chat_id, context, is_voice=True)
     finally:
-        if os.path.exists(temp_ogg): os.remove(temp_ogg)
+        if os.path.exists(temp_ogg):
+            try:
+                os.remove(temp_ogg)
+            except Exception as e:
+                print(f"Cleanup Error (Voice): {e}")
 
 def create_telegram_app():
     """Initializes and returns the Telegram Application instance."""
@@ -255,7 +279,11 @@ def start_telegram_bot():
     # Create a fresh app for polling to avoid collision with global one
     app = create_telegram_app()
     if app:
-        print("Telegram Bot (with Voice) is running in Polling mode...")
+        print("\n" + "="*50)
+        print("  🚀 Yojana AI Telegram Bot is starting...")
+        print("  📡 Mode: POLLING (Local Development)")
+        print("  📜 Note: Webhooks are disabled while polling.")
+        print("="*50 + "\n")
         app.run_polling()
 
 if __name__ == '__main__':

@@ -15,6 +15,17 @@ REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if REPO_ROOT not in sys.path:
     sys.path.insert(0, REPO_ROOT)
 
+# Fix for Windows Unicode/Emoji printing errors
+if sys.platform == "win32":
+    try:
+        sys.stdout.reconfigure(encoding='utf-8')
+        sys.stderr.reconfigure(encoding='utf-8')
+    except AttributeError:
+        # Fallback for older Python versions
+        import io
+        sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+        sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
+
 from flask import Flask, render_template, request, jsonify, session
 from werkzeug.security import generate_password_hash, check_password_hash
 from database.db import SessionLocal
@@ -28,13 +39,14 @@ except Exception:
     handle_webhook_update = None
 import asyncio
 import requests
+import tempfile
 from twilio.twiml.messaging_response import MessagingResponse
 
 warnings.filterwarnings("ignore")
 # load_dotenv() moved to the top
 
 app = Flask(__name__)
-app.secret_key = "your-secret-key-change-this"  # Change this in production
+app.secret_key = os.getenv("FLASK_SECRET_KEY", "your-secret-key-change-this")  # Prefer env var
 
 # Define a safe temporary directory (works on Windows & Linux/Serverless)
 # On Vercel/AWS Lambda, only /tmp is writable
@@ -166,7 +178,8 @@ def shutdown_session(exception=None):
     """Ensure database sessions are closed after every request."""
     from database.db import SessionLocal
     # This manually closes the session to prevent Supabase connection leaks
-    pass
+    # Use .remove() on scoped_session to recycle pool connections
+    SessionLocal.remove()
 
 # -------------------------------------------------
 #   Background warmup logic (Shared with CLI/Sync tools)
@@ -174,6 +187,8 @@ def shutdown_session(exception=None):
 
 def _warmup():
     try:
+        from database.db import init_db
+        init_db() # Ensure tables exist (SessionState, etc)
         from rag.agent import warmup
         warmup()
     except Exception as e:
@@ -933,18 +948,28 @@ def whatsapp_webhook():
     schemes_data = []
 
     for chunk in ask_agent(text_to_process, session_id=session_id, user_context=user_context):
-        if chunk['type'] in ['chunk', 'conversational', 'names_only', 'specific_field']:
+        ctype = chunk.get('type')
+        if ctype in ['chunk', 'conversational', 'names_only', 'names_only_start', 'specific_field']:
             incoming_chunk = chunk.get('text', '') or chunk.get('reply', '')
             if any(p in incoming_chunk for p in ["Loading cards", "Generating response", "Analyzing profile", "conversational_start", "conversational_end"]):
                 continue
             full_text += incoming_chunk
-        elif chunk['type'] in ['convert_to_cards', 'full_detail']:
+        elif ctype == 'names_only_pill':
+            s = chunk.get('scheme', {})
+            full_text += f"\n• {s.get('scheme_name')}"
+        elif ctype in ['convert_to_cards', 'full_detail', 'schemes_end']:
             schemes_data = chunk.get('schemes', [])
-        elif chunk['type'] == 'eligibility_result':
+        elif ctype == 'scheme_card':
+            # Collect individual cards for single-message block logic
+            schemes_data.append(chunk.get('scheme'))
+        elif ctype == 'eligibility_result' or ctype == 'eligibility_for_shown':
             res_schemes = chunk.get('schemes', [])
             full_text += f"\n\n  *Found {len(res_schemes)} Eligible Schemes:*\n"
             for i, s in enumerate(res_schemes):
-                full_text += f"{i+1}. *{s.scheme_name}*\n     {s.why_eligible}\n"
+                # Fix: using .get() for dict access instead of object attribute
+                name = s.get('scheme_name', 'Unknown')
+                why = s.get('why_eligible', '')
+                full_text += f"{i+1}. *{name}*\n     {why}\n"
 
     # 3. Append Full Details if they exist
     if schemes_data:
@@ -985,7 +1010,15 @@ def tts_wa():
     temp_path = os.path.join(TEMP_FOLDER, f"wa_reply_{uuid.uuid4()}.mp3")
 
     asyncio.run(generate_speech(text, lang, temp_path))
-    return send_file(temp_path, mimetype="audio/mpeg")
+    def generate_and_cleanup():
+        with open(temp_path, "rb") as f:
+            yield from f
+        try:
+            if os.path.exists(temp_path): os.remove(temp_path)
+        except Exception as e:
+            print(f"Cleanup Error: {e}")
+
+    return Response(generate_and_cleanup(), mimetype="audio/mpeg")
 
 
 @app.route("/reset", methods=["POST"])
@@ -1061,6 +1094,8 @@ def status():
 @app.route("/set_telegram_webhook", methods=["GET"])
 def set_telegram_webhook():
     """Utility route to set the Telegram webhook URL."""
+    from database.db import init_db
+    init_db() # Create missing tables before setting webhook
     token = os.getenv("TELEGRAM_BOT_TOKEN")
     if not token:
         return jsonify({"error": "TELEGRAM_BOT_TOKEN not set in environment"}), 400

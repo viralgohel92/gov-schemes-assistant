@@ -7,25 +7,19 @@ from langchain_core.documents import Document
 from rag.llm import get_vector_db, get_structured_llm, get_minimal_structured_llm, SchemeOutput
 from rag.utils import format_docs, scheme_name_similarity
 from rag.intent import is_direct_scheme_name_query, rewrite_question
+from langchain_core.documents import Document
 
-EXTRACTION_SYSTEM = """You are a precise data extractor for government schemes. 
-Your ONLY task is to extract exact scheme names from the provided context.
 
-CRITICAL RULES:
-1. ONLY extract schemes that are explicitly listed as a value after a "Scheme name:" label or similar clear identifier.
-2. NEVER extract the labels themselves (e.g., do NOT extract "Scheme name", "Description", "Benefits", "Eligibility" as scheme names).
-3. If no specific scheme is found in the context that matches the user's intent, return an empty list.
-4. Do NOT invent or hallucinate scheme names.
-5. Do NOT return the user's question or topic as a scheme name.
-6. Return the results in the required JSON format.
+EXTRACTION_SYSTEM = """You are a helpful government scheme expert.
+Your task is to identify and extract relevant schemes from the provided context that match the user's query or category.
 
-RULES FOR FULL EXTRACTION:
-- For 'application_process', ALWAYS refactor messy blocks into a clean, numbered list (1, 2, 3...) with one step per line.
-- For 'benefits' and 'eligibility', use clear bullet points ( ) if there are multiple distinct points.
-- Remove redundant filler phrases like "click here", "click", "visit link", or "here" from all fields.
-- Copy values from the context but ensure they are STRUCTURED for readability.
-- Keep scheme names, state names, and acronyms like SC/ST/OBC exactly as found.
-- Only use 'Not Available' if truly absent.
+RULES:
+1. Extract scheme names that match the user's intent OR topic (e.g., if user asks for "women schemes", extract any schemes related to women, pregnancy, or girls).
+2. ONLY extract schemes that are explicitly in the provided context.
+3. For 'application_process', refactor messy blocks into a clean, numbered list (1, 2, 3...).
+4. For 'benefits' and 'eligibility', use clear bullet points.
+5. If truly no relevant schemes are found, return an empty list.
+6. Return results in JSON format.
 """
 
 
@@ -60,17 +54,17 @@ def extract_specific_scheme_name(question: str, last_schemes: list) -> str | Non
 
 # Common search terms mapping for synonyms
 SYNONYMS = {
-    "housing": ["awas", "house", "home", "residential"],
-    "farmer": ["khedut", "agriculture", "kisan", "crop", "farm"],
-    "student": ["vidhyarthi", "scholarship", "education", "school", "college"],
-    "health": ["medical", "aarogya", "hospital", "medicine", "treatment"],
-    "woman": ["mahila", "lady", "female", "girl"],
-    "disability": ["divyang", "handicap", "disabled"],
-    "employment": ["job", "rozgaar", "career", "skill"],
-    "poultry": ["chicken", "bird", "egg", "murgapalan", "hen", "chick", "hatchery"],
-    "animal": ["pashupalan", "cattle", "cow", "buffalo", "veterinary", "livestock", "milk", "dairy"],
-    "loan": ["credit", "subsidy", "financial assistance", "sahay"],
-    "marriage": ["vivah", "lagana", "shadi", "kanyadan"],
+    "housing": ["awas", "house", "home", "residential", "housing", "ghar", "makan", "rehthan", "awas yojna"],
+    "farmer": ["khedut", "agriculture", "kisan", "crop", "farm", "farmers", "farming", "krushi", "khet"],
+    "student": ["vidhyarthi", "scholarship", "education", "school", "college", "students", "shikshan", "shishyavrutti"],
+    "health": ["medical", "aarogya", "hospital", "medicine", "treatment", "healthcare", "swasthya", "davakhanu"],
+    "woman": ["mahila", "lady", "female", "girl", "women", "ladies", "girls", "stree", "beheno"],
+    "disability": ["divyang", "handicap", "disabled", "viklang"],
+    "employment": ["job", "rozgaar", "career", "skill", "employment", "naukri", "kaushalya"],
+    "poultry": ["chicken", "bird", "egg", "murgapalan", "hen", "chick", "hatchery", "paxipalan"],
+    "animal": ["pashupalan", "cattle", "cow", "buffalo", "veterinary", "livestock", "milk", "dairy", "maldhari"],
+    "loan": ["credit", "subsidy", "financial assistance", "sahay", "loan", "rin", "loan sahay"],
+    "marriage": ["vivah", "lagana", "shadi", "kanyadan", "marriage"],
 }
 
 # High-accuracy mapping for 'Quick Start' / suggestion box chips
@@ -218,24 +212,23 @@ def _sql_fallback_search(query: str, k: int = 5):
         # Try finding AND matches first (more specific)
         schemes = session.query(Scheme).filter(and_(*filters)).order_by(desc(order_case)).limit(k).all()
         
-        # TIER 2: If no "AND" matches, fall back to simple "OR" on all keywords + synonyms
-        if not schemes and len(meaningful_keywords) > 1:
-            print(f"  No exact AND matches for {meaningful_keywords}. Trying OR on expanded set...")
-            expanded_keywords = []
+        # TIER 2: If no "AND" matches, fall back to a weighted "OR" search
+        if not schemes:
+            print(f"  No exact AND matches. Trying broad OR search for keywords...")
+            all_syns = []
             for w in meaningful_keywords:
-                expanded_keywords.append(w)
-                for cat, syns in SYNONYMS.items():
-                    if w == cat or w in syns:
-                        expanded_keywords.extend(syns)
-                        if cat not in expanded_keywords: expanded_keywords.append(cat)
+                all_syns.append(w)
+                for cat, syn_list in SYNONYMS.items():
+                    if w == cat or w in syn_list:
+                        all_syns.extend(syn_list)
             
-            filters = []
-            for kw in set(expanded_keywords):
-                pattern = f"%{kw}%"
-                filters.append(Scheme.scheme_name.ilike(pattern))
-                filters.append(Scheme.category.ilike(pattern))
+            or_filters = []
+            for kw in set(all_syns):
+                or_filters.append(Scheme.scheme_name.ilike(f"%{kw}%"))
+                or_filters.append(Scheme.category.ilike(f"%{kw}%"))
+                or_filters.append(Scheme.description.ilike(f"%{kw}%"))
             
-            schemes = session.query(Scheme).filter(or_(*filters)).order_by(desc(order_case)).limit(k).all()
+            schemes = session.query(Scheme).filter(or_(*or_filters)).order_by(desc(order_case)).limit(k).all()
         
         docs = []
         for s in schemes:
@@ -264,7 +257,7 @@ def _sql_exact_name_match(scheme_name: str) -> List[Document]:
     Tries to find an EXACT or very close match in the SQL database.
     This bypasses vector search noise for known names.
     """
-    from langchain_core.documents import Document
+
     try:
         from database.db import SessionLocal
         from database.models import Scheme

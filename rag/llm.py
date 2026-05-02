@@ -174,6 +174,7 @@ class NativeSupabaseVectorStore:
             
         def invoke(self, query):
             embed = self.store.embedding.embed_query(query)
+
             try:
                 res = self.store.client.rpc(self.store.query_name, {
                     "query_embedding": embed,

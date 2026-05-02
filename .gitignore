@@ -61,6 +61,7 @@ scratch/
 *.tempz
 tmp/
 temp/
+scratch/
 
 # --- Playwright (scraping) ---
 playwright-report/

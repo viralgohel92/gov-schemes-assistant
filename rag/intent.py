@@ -29,16 +29,11 @@ def is_direct_scheme_name_query(question: str) -> bool:
     if any(kw in q_lower for kw in profile_keywords):
         return False
         
-    # If most words are capitalized, it's likely a scheme name
-    capitalized_words = sum(1 for w in words if w and w[0].isupper())
-    if capitalized_words >= len(words) * 0.5:
-        return True
-        
-    question_words = ["eligible","eligib","qualify","apply","benefit","what","which","how","who","where","when","why","can","could","should","would","please","list","find","search"]
-    # If no question words and it mentions scheme/yojana, it's a name query
-    if not any(qw in q_lower for qw in question_words) and any(w in q_lower for w in ["scheme", "yojana", "yojna", "scholarship"]):
-        return True
-        
+    # EXCLUDE common category keywords from being treated as direct scheme names
+    category_keywords = ["farmer", "khedut", "kisan", "woman", "women", "girl", "lady", "mahila", "student", "scholarship", "housing", "awas", "health", "loan"]
+    if any(ck in q_lower for ck in category_keywords):
+        return False
+
     return False
 
 

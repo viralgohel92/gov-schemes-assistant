@@ -14,11 +14,30 @@ from langchain_core.messages import HumanMessage, AIMessage
 from rag.llm import SchemeOutput, MinimalSchemeOutput, UserProfile, warmup, get_vector_db, get_llm
 from rag.utils import parse_limit
 from rag.translation import detect_language, translate_to_english, translate_response, get_string, translate_scheme_dict
-from rag.memory import get_session, save_to_history
+from rag.memory import get_session, save_to_history, save_session
 from rag.intent import detect_intent, detect_field, is_fresh_search_request, extract_gender_from_question, merge_gender_into_profile, is_followup_on_previous, resolve_scheme_reference
 from rag.retriever import fetch_schemes, fetch_random_schemes
 from rag.eligibility import extract_user_profile, check_eligibility_for_schemes, fetch_eligible_schemes
 from rag.web_enrichment import apply_visit_site_fallback
+
+def _translate_scheme_names(scheme_dicts, lang):
+    """Helper to translate scheme names in a list of scheme dicts (for pills/cards)."""
+    if lang == "en" or not scheme_dicts:
+        return scheme_dicts
+    try:
+        from rag.translation import translate_suggestions_batch
+        # Note: translate_suggestions_batch returns dicts with 'name', 'category', 'en_name'
+        to_translate = [{"name": s.get("scheme_name", ""), "category": s.get("category", "")} for s in scheme_dicts]
+        translated = translate_suggestions_batch(to_translate, lang)
+        for i, t in enumerate(translated):
+            # Update name and category. Keep other fields (benefits, etc.) as is.
+            scheme_dicts[i]["scheme_name"] = t["name"]
+            if t.get("category"):
+                scheme_dicts[i]["category"] = t["category"]
+    except Exception as e:
+        print(f"[_translate_scheme_names] Error: {e}")
+    return scheme_dicts
+
 
 def get_total_scheme_count() -> int:
     """Count total schemes stored in the Vector DB or Database."""
@@ -120,6 +139,7 @@ def ask_agent(question: str, session_id: str = "user_1", ui_lang: str = None, us
         session["user_profile"] = UserProfile(**updated_data)
         if not getattr(session["user_profile"], 'state', None):
             session["user_profile"].state = "Gujarat"
+        save_session(session_id, session)
 
     #    Language detection   
     detected = detect_language(question)
@@ -134,6 +154,8 @@ def ask_agent(question: str, session_id: str = "user_1", ui_lang: str = None, us
         lang = session.get("lang", "en")
     
     session["lang"] = lang
+    save_session(session_id, session)
+    print(f"[DEBUG] ask_agent called with question: {question[:100]}")
 
     def reply_in_lang(text: str) -> str:
         return translate_response(text, lang)
@@ -141,17 +163,18 @@ def ask_agent(question: str, session_id: str = "user_1", ui_lang: str = None, us
     def ls(key: str) -> str:
         return get_string(key, lang)
 
+    def _process_and_translate_scheme(d: dict) -> dict:
+        d = apply_visit_site_fallback(d)
+        if lang != "en":
+            d = translate_scheme_dict(d, lang)
+        return d
+
     PROFILE_REQUEST = ls("profile_request")
     awaiting_profile = session.get("awaiting_profile", False)
 
     # \u2500\u2500 Sequential Step 1: Translation (MUST happen first)
     question_en = translate_to_english(question, detected)
     
-    # 2. IMMEDIATE FEEDBACK: Tell the user we're working
-    search_msg = { "en": "Searching...", "hi": "\u0916\u094b\u091c \u0930\u0939\u093e \u0939\u0942\u0901...", "gu": "\u0ab6\u0acb\u0aa7\u0ac0 \u0ab0\u0ab9\u0acd\u0aaf\u0acb \u0a9b\u0ac1\u0a82..." }.get(lang, "Searching...")
-    # yield {"type": "conversational_start", "lang": lang}
-    # yield {"type": "chunk", "text": f"*{search_msg}*"}
-
     # \u2500\u2500 Step 3: Parallelized Tasks (Intent, Profile, Field, Gender)
     # Once we have question_en, we can run all other analysis in parallel to save ~4-6 seconds.
     # Parallelize: detect_intent, extract_user_profile, detect_field, extract_gender_from_question
@@ -170,6 +193,7 @@ def ask_agent(question: str, session_id: str = "user_1", ui_lang: str = None, us
         profile = merge_gender_into_profile(profile_update, gender_hint)
         session["user_profile"] = profile
         session["awaiting_profile"] = False
+        save_session(session_id, session)
 
         if awaiting_profile and session.get("last_schemes"):
             last = session["last_schemes"]
@@ -195,8 +219,10 @@ def ask_agent(question: str, session_id: str = "user_1", ui_lang: str = None, us
                 print("  Checking eligibility for shown schemes...")
                 results = check_eligibility_for_schemes(profile, scheme_objects)
                 save_to_history(session_id, question, f"Checked eligibility for {len(scheme_objects)} schemes.")
-                yield {"type": "eligibility_for_shown", "profile": profile.model_dump(), "schemes": results, "lang": lang}
+                yield {"type": "conversational_end"}
+                yield {"type": "eligibility_for_shown", "profile": profile.model_dump(), "schemes": _translate_scheme_names(results, lang), "lang": lang}
                 return
+
 
         # No prior shown schemes OR scheme_objects came out empty   search full DB
         print("  No prior schemes found \u2014 searching full DB for eligibility...")
@@ -215,6 +241,9 @@ def ask_agent(question: str, session_id: str = "user_1", ui_lang: str = None, us
             yield {"type": "conversational", "reply": reply, "lang": lang}
             return
 
+        # Stream eligibility results
+        yield {"type": "eligibility_start", "profile": profile.model_dump(), "lang": lang}
+        
         save_to_history(session_id, question, f"Found {len(eligible)} eligible schemes.")
         session["last_schemes"] = eligible
         
@@ -239,14 +268,23 @@ def ask_agent(question: str, session_id: str = "user_1", ui_lang: str = None, us
             if schemes:
                 selected = schemes[:5]
                 save_to_history(session_id, question, f"Showed schemes: {', '.join(s.scheme_name for s in selected)}")
+                
+                yield {"type": "schemes_start", "lang": lang}
+                
                 dicts = [s.model_dump() for s in selected]
+                results = [None] * len(dicts)
                 with ThreadPoolExecutor(max_workers=min(len(dicts), 5)) as ex:
-                    enriched = list(ex.map(apply_visit_site_fallback, dicts))
-                yield {
-                    "type": "full_detail",
-                    "schemes": enriched,
-                    "lang": lang,
-                }
+                    futures = {ex.submit(_process_and_translate_scheme, d): i for i, d in enumerate(dicts)}
+                    for future in as_completed(futures):
+                        idx = futures[future]
+                        try:
+                            res_dict = future.result()
+                        except Exception:
+                            res_dict = dicts[idx]
+                        results[idx] = res_dict
+                        yield {"type": "scheme_card", "scheme": res_dict, "index": idx + 1, "lang": lang}
+                
+                yield {"type": "schemes_end", "schemes": results, "lang": lang}
                 return
             else:
                 reply = reply_in_lang(ls("no_schemes_found"))
@@ -269,6 +307,7 @@ def ask_agent(question: str, session_id: str = "user_1", ui_lang: str = None, us
         ]):
             session["awaiting_profile"] = True
             save_to_history(session_id, question, PROFILE_REQUEST)
+            yield {"type": "conversational_end"}
             yield {"type": "conversational", "reply": PROFILE_REQUEST, "lang": lang}
             return
 
@@ -293,6 +332,7 @@ def ask_agent(question: str, session_id: str = "user_1", ui_lang: str = None, us
 
             yield {"type": "eligibility_result", "profile": profile.model_dump(), "schemes": eligible, "lang": lang, "preface": preface}
             return
+
 
         if last_schemes:
             print(f"  Found {len(last_schemes)} schemes in history. Converting to full detail...")
@@ -324,7 +364,9 @@ def ask_agent(question: str, session_id: str = "user_1", ui_lang: str = None, us
             print(f"  Proceeding with eligibility check for {len(full_schemes)} full schemes.")
             results = check_eligibility_for_schemes(profile, full_schemes)
             save_to_history(session_id, question, f"Checked eligibility for {len(full_schemes)} schemes.")
-            yield {"type": "eligibility_for_shown", "profile": profile.model_dump(), "schemes": results, "lang": lang}
+            yield {"type": "conversational_end"}
+            yield {"type": "eligibility_for_shown", "profile": profile.model_dump(), "schemes": _translate_scheme_names(results, lang), "lang": lang}
+
             return
 
         print("  Searching all schemes for your eligibility...")
@@ -358,40 +400,52 @@ def ask_agent(question: str, session_id: str = "user_1", ui_lang: str = None, us
             session["last_schemes"] = schemes
             
             # Format as a list of names (similar to names_only)
-            names_text = "\n".join(f"{i+1}. {s.scheme_name}" for i, s in enumerate(schemes))
-            names_text += "\n\n  Ask me for full details of any scheme above."
-            reply = reply_in_lang(names_text)
-            
-            save_to_history(session_id, question, reply)
-            
-            yield {"type": "conversational_start", "lang": lang}
-            words = reply.split(" ")
-            for i, word in enumerate(words):
-                chunk = word if i == 0 else " " + word
-                yield {"type": "chunk", "text": chunk}
-                time.sleep(0.02)
-            yield {"type": "conversational_end"}
+            # Send as names_only format for clickable pills
+            reply = ls("found_schemes")
+            scheme_dicts = [s.model_dump() for s in schemes]
+            yield {"type": "names_only", "reply": reply, "schemes": _translate_scheme_names(scheme_dicts, lang), "lang": lang}
             return
 
+
+
     schemes = None
+    resolved = None
 
     # Step 1: If there are previously shown schemes, ALWAYS try to resolve against them first.
     # This is critical for Hindi/Gujarati where is_followup_on_previous may miss the match.
-    if session["last_schemes"] and not fresh and intent != "names_only":
-        resolved = resolve_scheme_reference(question, question_en, session["last_schemes"])
+    # We also check if the question EXACTLY matches any last scheme name (pill click).
+    exact_match = None
+    if session.get("last_schemes"):
+        for s in session["last_schemes"]:
+            s_name = s.scheme_name if hasattr(s, "scheme_name") else s.get("scheme_name", "")
+            if s_name and (question.lower().strip() == s_name.lower().strip() or question_en.lower().strip() == s_name.lower().strip()):
+                exact_match = s
+                break
+
+    if (session["last_schemes"] and not fresh and intent != "names_only") or exact_match:
+        if exact_match:
+            resolved = [exact_match]
+        else:
+            resolved = resolve_scheme_reference(question, question_en, session["last_schemes"])
+            
         if resolved is not None:
             # Successfully matched specific scheme(s) from the list
             converted = []
             for s in resolved:
                 name = s.get("scheme_name", "") if isinstance(s, dict) else s.scheme_name
+                # If we have an exact match OR a strong resolution, we WANT full details
+                intent = "full_detail" 
+                
                 if isinstance(s, dict) or isinstance(s, MinimalSchemeOutput):
-                    fetched = fetch_schemes(name, [], k=3, last_schemes=[], minimal_extraction=(intent == "names_only"))
+                    fetched = fetch_schemes(name, [], k=3, last_schemes=[], minimal_extraction=False)
                     if fetched:
                         converted.append(fetched[0])
                     else:
+                        # Rebuild simple output if fetch failed
                         converted.append(SchemeOutput(
                             scheme_name=name,
-                            description="", category="",
+                            description=s.get("description", "") if isinstance(s, dict) else "",
+                            category=s.get("category", "") if isinstance(s, dict) else "",
                             benefits="", eligibility="",
                             documents_required="", application_process="",
                             state="", official_link=""
@@ -399,6 +453,15 @@ def ask_agent(question: str, session_id: str = "user_1", ui_lang: str = None, us
                 else:
                     converted.append(s)
             schemes = converted
+
+    # Force "Names First" policy ONLY for new, non-specific searches
+    if resolved is None and intent in ("full_detail", "specific_field") and not followup:
+        # Check if it's a very specific long name query (from is_direct_scheme_name_query)
+        # using a simple length check or keyword check
+        from rag.intent import is_direct_scheme_name_query
+        if not is_direct_scheme_name_query(question):
+            print(f"  New search detected with intent {intent}. Forcing names_only first.")
+            intent = "names_only"
 
     # Step 2: If resolution failed (None) or no last_schemes, do a fresh DB search 
     if schemes is None:
@@ -428,6 +491,7 @@ def ask_agent(question: str, session_id: str = "user_1", ui_lang: str = None, us
             schemes = [s for s in schemes if s.scheme_name not in prev_names]
         session["last_schemes"] = schemes
         session["last_limit"] = limit
+        save_session(session_id, session)
 
     if intent == "names_only":
         # Filter out invalid or hallucinated names (LLM sometimes matches labels instead of values)
@@ -465,16 +529,20 @@ def ask_agent(question: str, session_id: str = "user_1", ui_lang: str = None, us
         reply = reply_in_lang(names_text)
         save_to_history(session_id, question, reply)
 
-        # Stream names as text tokens (ChatGPT-style)
-        yield {"type": "conversational_start", "lang": lang}
-        # Split into small chunks for typing effect
-        words = reply.split(" ")
-        for i, word in enumerate(words):
-            chunk = word if i == 0 else " " + word
-            yield {"type": "chunk", "text": chunk}
-            time.sleep(0.02)  # Simulate actual typing speed
-        yield {"type": "conversational_end"}
+        # Stream names_only pills (YIELD START IMMEDIATELY)
+        yield {"type": "names_only_start", "reply": reply, "lang": lang}
+        
+        save_to_history(session_id, question, reply)
+        scheme_dicts = [s.model_dump() for s in selected]
+        translated_schemes = _translate_scheme_names(scheme_dicts, lang)
+        
+        for i, s in enumerate(translated_schemes):
+            yield {"type": "names_only_pill", "scheme": s, "index": i, "lang": lang}
+        
+        yield {"type": "names_only_end", "reply": reply, "schemes": translated_schemes, "lang": lang}
         return
+
+
 
     if intent == "specific_field":
         field = detect_field(question_en)
@@ -497,6 +565,7 @@ def ask_agent(question: str, session_id: str = "user_1", ui_lang: str = None, us
         return
 
     # full_detail   Stream TEXT -> then render CARDS
+    # full_detail   Stream individual CARDS one-by-one as they are ready
     # Filter out invalid or hallucinated names
     invalid_names = {"scheme name", "not available", "not found", "none", "n/a", "unknown", "scheme"}
     selected = [s for s in schemes if s.scheme_name.lower().strip() not in invalid_names]
@@ -509,43 +578,29 @@ def ask_agent(question: str, session_id: str = "user_1", ui_lang: str = None, us
         return
 
     save_to_history(session_id, question, f"Showed details for: {', '.join(s.scheme_name for s in selected)}")
+    
+    # Yield start event IMMEDIATELY before slow work
+    yield {"type": "schemes_start", "lang": lang}
+    
     dicts = [s.model_dump() for s in selected]
 
-    preview_parts = []
-    for i, d in enumerate(dicts):
-        benefits_short = str(d.get("benefits", ""))[:150]
-        preview_parts.append(f"**{i+1}. {d['scheme_name']}**\nBenefits: {benefits_short}...\n")
-    
-    preview_text = "Here are the details:\n\n" + "\n".join(preview_parts) + "\n*Loading cards...*"
-    preview_text = reply_in_lang(preview_text)
-    
-    def _process_and_translate_scheme(d: dict) -> dict:
-        d = apply_visit_site_fallback(d)
-        if lang != "en":
-            d = translate_scheme_dict(d, lang)
-        return d
-
-    # Run enrichment and translation in background WHILE streaming text
+    # Run enrichment and translation in parallel and yield as they complete
+    results = [None] * len(dicts)
     with ThreadPoolExecutor(max_workers=max(1, min(len(dicts), 5))) as ex:
         futures = {ex.submit(_process_and_translate_scheme, d): i for i, d in enumerate(dicts)}
         
-        # Stream the typing effect text
-        yield {"type": "conversational_start", "lang": lang}
-        words = preview_text.split(" ")
-        for i, word in enumerate(words):
-            chunk = word if i == 0 else " " + word
-            yield {"type": "chunk", "text": chunk}
-            time.sleep(0.03)  # simulates typing and masks the web scraping latency
-        
-        # Ensure we don't accidentally send a conversational_end yet, we just pause
-        results = [None] * len(dicts)
         for future in as_completed(futures):
             idx = futures[future]
             try:
-                results[idx] = future.result()
-            except Exception:
-                results[idx] = dicts[idx]
+                res_dict = future.result()
+            except Exception as e:
+                print(f"[full_detail] Streaming error for scheme {idx}: {e}")
+                res_dict = dicts[idx]
+            
+            results[idx] = res_dict
+            # Yield individual card for true streaming
+            yield {"type": "scheme_card", "scheme": res_dict, "index": idx + 1, "lang": lang}
 
-    # Convert the streamed text bubble into cards!
-    yield {"type": "convert_to_cards", "schemes": results, "lang": lang}
+    # Signal completion and provide full list for history saving
+    yield {"type": "schemes_end", "schemes": results, "lang": lang}
     return

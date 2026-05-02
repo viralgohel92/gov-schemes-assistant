@@ -66,3 +66,9 @@ class Notification(Base):
     message = Column(Text)                                  # e.g. "Newly added scheme for science students."
     type = Column(String, default="new_scheme")
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+class SessionState(Base):
+    __tablename__ = "session_states"
+    session_id = Column(String, primary_key=True, index=True) # e.g. "tg_123456"
+    data = Column(JSON) # Stores profile, last_schemes, etc.
+    updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
